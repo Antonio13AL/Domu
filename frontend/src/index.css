@@ -1,111 +1,345 @@
+/* ============================================================
+   Estilos globales (index.css)
+   ------------------------------------------------------------
+   1. Tokens del sistema de diseño
+   2. Reset y tipografía base
+   3. Accesibilidad (foco visible, movimiento reducido)
+   4. Utilidades globales
+
+   Los estilos de componente viven en *.module.css y el layout
+   principal de la aplicación en App.css.
+   ============================================================ */
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* -------------------------------------------------------
+     1. Tokens — Paleta
+     ------------------------------------------------------- */
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Primarios */
+  --color-primary: #1e3a8a;
+  --color-primary-hover: #172554;
+  /* hover del botón primario */
+  --color-secondary: #2563eb;
+  --color-secondary-hover: #1d4ed8;
+  --color-tertiary: #059669;
+  /* éxito, reservas confirmadas, cuotas al día */
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Superficies */
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-dim: #f1f5f9;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  /* Texto */
+  --color-text-main: #0f172a;
+  --color-text-slate: #64748b;
+  --color-text-dark-slate: #334155;
+  --color-text-muted: #94a3b8;
+
+  /* Bordes */
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  /* borde en hover de tarjetas */
+  --color-border-subtle: rgba(226, 232, 240, 0.8);
+
+  /* Estado: éxito / aprobado */
+  --color-success: #059669;
+  --color-success-bg: #dcfce7;
+  --color-success-border: #bbf7d0;
+  --color-success-text: #166534;
+
+  /* Estado: error / rechazado / vencido */
+  --color-danger: #dc2626;
+  --color-danger-bg: #fee2e2;
+  --color-danger-border: #fca5a5;
+  --color-danger-text: #991b1b;
+
+  /* Estado: pendiente / en revisión */
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-warning-text: #92400e;
+
+  /* Estado: informativo */
+  --color-info: #2563eb;
+  --color-info-bg: #dbeafe;
+  --color-info-border: #bfdbfe;
+  --color-info-text: #1e40af;
+
+  /* Scrim de modales y drawers */
+  --color-scrim: rgba(15, 23, 42, 0.3);
+
+  /* -------------------------------------------------------
+     1. Tokens — Tipografía
+     ------------------------------------------------------- */
+  --font-family-body: "Plus Jakarta Sans", sans-serif;
+  --font-family-code: "JetBrains Mono", ui-monospace, monospace;
+
+  --font-size-display: 2.5rem;
+  /* 40/48 */
+  --font-size-h1: 2rem;
+  /* 32/40 */
+  --font-size-h2: 1.5rem;
+  /* 24/32 */
+  --font-size-h3: 1.25rem;
+  /* 20/28 */
+  --font-size-title: 1rem;
+  /* 16/24 */
+  --font-size-body: 1rem;
+  /* 16/26 */
+  --font-size-body-sm: 0.875rem;
+  /* 14/22 */
+  --font-size-label: 0.8125rem;
+  /* 13/18 */
+  --font-size-label-sm: 0.6875rem;
+  /* 11/16 */
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.2;
+  --line-height-body: 1.6;
+  --tracking-tight: -0.025em;
+
+  /* -------------------------------------------------------
+     1. Tokens — Espaciado
+     ------------------------------------------------------- */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.5rem;
+  --gutter: 1rem;
+  --gutter-lg: 1.5rem;
+
+  /* -------------------------------------------------------
+     1. Tokens — Radios
+     ------------------------------------------------------- */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1rem;
+  --radius-full: 9999px;
+
+  /* -------------------------------------------------------
+     1. Tokens — Elevación
+     ------------------------------------------------------- */
+  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-sm:
+    0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.08);
+  --shadow-md:
+    0 4px 6px -1px rgba(15, 23, 42, 0.1), 0 2px 4px -2px rgba(15, 23, 42, 0.1);
+  --shadow-sidebar: 0 4px 24px rgba(0, 0, 0, 0.04);
+  /* Nivel 1 — tarjetas estructurales en reposo */
+  --shadow-level-1:
+    0 1px 3px 0 rgba(15, 23, 42, 0.03), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
+  /* Nivel 2 — tarjetas en hover y desplegables */
+  --shadow-level-2:
+    0 10px 15px -3px rgba(30, 58, 138, 0.04),
+    0 4px 6px -4px rgba(30, 58, 138, 0.02);
+  /* Nivel 3 — modales y drawers sobre scrim */
+  --shadow-level-3:
+    0 20px 25px -5px rgba(15, 23, 42, 0.08),
+    0 8px 10px -6px rgba(15, 23, 42, 0.04);
+
+  /* -------------------------------------------------------
+     1. Tokens — Layout
+     ------------------------------------------------------- */
+  --sidebar-width: 288px;
+  --header-height: 64px;
+  --content-max-width: 1600px;
+
+  /* Transiciones */
+  --transition-fast: 150ms ease;
+  --transition-base: 200ms ease;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+/* ============================================================
+   2. Reset y tipografía base
+   ============================================================ */
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-body {
-  margin: 0;
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  background-color: var(--color-background);
+  color: var(--color-text-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: none;
+}
+
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-text-main);
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+  font-size: var(--font-size-h1);
 }
+
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+  font-size: var(--font-size-h2);
 }
+
+h3 {
+  font-size: var(--font-size-h3);
+}
+
 p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+ul,
+ol {
+  margin: 0;
+  padding: 0;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+img,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--font-family-code);
+}
+
+/* ============================================================
+   3. Accesibilidad
+   ============================================================ */
+
+/* Foco visible y consistente en todos los interactivos */
+:focus-visible {
+  outline: 2px solid var(--color-secondary);
+  outline-offset: 2px;
+}
+
+/* Sin anillo para foco de ratón, pero visible para teclado */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Respetar la preferencia de movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Scrollbar discreta pero visible (no se oculta la navegación por scroll) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong);
+  border-radius: var(--radius-full);
+}
+
+/* ============================================================
+   4. Utilidades globales
+   ============================================================ */
+
+/* Contenido accesible solo para lectores de pantalla */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Enlace "saltar al contenido": visible solo con foco de teclado */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: var(--space-md);
+  z-index: 100;
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--color-primary);
+  color: #ffffff;
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: 0;
 }
