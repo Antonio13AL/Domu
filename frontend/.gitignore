@@ -12,6 +12,22 @@ dist
 dist-ssr
 *.local
 
+# Variables de entorno (nunca se versionan secretos)
+.env
+.env.*
+!.env.example
+
+# Artefactos de calidad
+coverage
+playwright-report
+test-results
+blob-report
+.vitest-reports
+
+# Artefactos de macOS / AppleDouble
+._*
+.DS_Store
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

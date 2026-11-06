@@ -18,7 +18,7 @@ Existe una imagen oficial de MySQL muy optimizada, lo que facilita la portabilid
 
 ## Frameworks
 
-El desarrollo de Domu se fundamenta en una arquitectura de separación de responsabilidades, utilizando un stack tecnológico basado en JavaScript/TypeScript de extremo a extremo. Esto permite una mayor fluidez en el intercambio de datos y una gestión unificada del ciclo de vida del desarrollo.
+El desarrollo de Domu se fundamenta en una arquitectura de separación de responsabilidades, utilizando un stack tecnológico basado en JavaScript de extremo a extremo. Esto permite una mayor fluidez en el intercambio de datos y una gestión unificada del ciclo de vida del desarrollo.
 
 ### Capa Cliente: React.js
 
