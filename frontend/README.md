@@ -46,9 +46,3 @@ hacia la API de Express (ver `vite.config.js`).
 
 Ver `.env.example`. Toda variable prefijada con `VITE_` es **pública**:
 se incrusta en el bundle. No se deben colocar secretos.
-
-## Documentación
-
-- Reglas del proyecto: `../.opencode/rules/frontend-rules.md`
-- Sistema de diseño: `../.opencode/rules/DESIGN.md`
-- Roadmap: `../.opencode/roadmap/frontend-roadmap.md`
