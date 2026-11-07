@@ -1,11 +1,17 @@
 {
   "name": "domu-backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "API backend de Domu — gestión de comunidades de vecinos",
   "main": "server.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "node server.js --watch"
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed": "node scripts/seed.js",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -13,9 +19,27 @@
   "devEngines": {
     "packageManager": {
       "name": "npm",
-      "version": "11.1.1",
+      "version": "^11.1.1",
       "onFail": "download"
     }
   },
-  "type": "module"
+  "dependencies": {
+    "bcryptjs": "3.0.3",
+    "cors": "2.8.6",
+    "dotenv": "18.0.9",
+    "express": "5.3.0",
+    "express-rate-limit": "8.7.3",
+    "helmet": "8.3.0",
+    "jsonwebtoken": "9.0.3",
+    "morgan": "1.12.1",
+    "mysql2": "3.24.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@vitest/coverage-v8": "5.1.0",
+    "eslint": "9.39.5",
+    "globals": "17.14.0",
+    "supertest": "7.3.2",
+    "vitest": "5.1.0"
+  }
 }
