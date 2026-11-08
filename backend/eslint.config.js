@@ -22,4 +22,11 @@ export default [
       "no-console": "warn",
     },
   },
+  {
+    // Los scripts CLI de `database/` (migraciones, seed) comunican por consola.
+    files: ["database/**/*.js"],
+    rules: {
+      "no-console": "off",
+    },
+  },
 ];

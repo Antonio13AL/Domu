@@ -9,8 +9,8 @@
     "start": "node server.js",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
-    "db:migrate": "node scripts/migrate.js",
-    "db:seed": "node scripts/seed.js",
+    "db:migrate": "node database/migrate.js",
+    "db:seed": "node database/seed.js",
     "lint": "eslint ."
   },
   "keywords": [],
