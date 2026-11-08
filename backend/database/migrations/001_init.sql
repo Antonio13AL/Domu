@@ -47,20 +47,18 @@ CREATE TABLE users (
   email         VARCHAR(255)    NOT NULL,
   password      VARCHAR(255)    NOT NULL,
   phone         VARCHAR(20)     NULL,
-  rol           VARCHAR(16)     NOT NULL DEFAULT 'NEIGHBOR',
+  role          VARCHAR(16)     NOT NULL DEFAULT 'NEIGHBOR',
   id_community  BIGINT UNSIGNED NULL,
   housing       VARCHAR(50)     NULL,
-  coefficient   DECIMAL(10,4)   NULL,
   is_active     TINYINT(1)      NOT NULL DEFAULT 1,
   created_at    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id_user),
   UNIQUE KEY uq_users_email (email),
-  KEY idx_users_rol_is_active (rol, is_active),
+  KEY idx_users_role_is_active (role, is_active),
   KEY idx_users_id_community (id_community),
-  CONSTRAINT chk_users_rol CHECK (rol IN ('NEIGHBOR', 'PRESIDENT')),
+  CONSTRAINT chk_users_role CHECK (role IN ('NEIGHBOR', 'PRESIDENT')),
   CONSTRAINT chk_users_is_active CHECK (is_active IN (0, 1)),
-  CONSTRAINT chk_users_coefficient CHECK (coefficient IS NULL OR coefficient > 0),
   CONSTRAINT fk_users_communities FOREIGN KEY (id_community)
     REFERENCES communities (id_community) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

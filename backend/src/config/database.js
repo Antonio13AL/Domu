@@ -10,9 +10,10 @@ dotenv.config({ quiet: true });
 // Mínimo imprescindible para poder abrir cualquier conexión.
 const DB_ENV = ["DB_HOST", "DB_USER", "DB_NAME"];
 
-// Configuración de juego de caracteres e intercalación.
+// Charset de conexión utf8mb4 (4 bytes). La collation del proyecto
+// se fija a nivel de base de datos en las migraciones; `mysql2` no
+// admite la opción `collation`.
 const DB_CHARSET = "utf8mb4";
-const DB_COLLATION = "utf8mb4_0900_ai_ci";
 
 class DatabaseConfig {
   #host;
@@ -56,7 +57,6 @@ class DatabaseConfig {
       password: this.#password,
       database: this.#database,
       charset: DB_CHARSET,
-      collation: DB_COLLATION,
       waitForConnections: true,
       connectionLimit: this.#connectionLimit,
       queueLimit: 0, // 0 = Peticiones ilimitadas en cola si el pool está lleno

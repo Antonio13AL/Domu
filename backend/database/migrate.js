@@ -5,14 +5,18 @@
 //   npm run db:migrate
 //
 // Qué hace:
-//   1. Conecta a MySQL con las variables de `.env`.
+//   1. Toma una conexión exclusiva del pool compartido
+//      (`src/config/database.js`) y la devuelve al terminar.
 //   2. Asegura la tabla de control `schema_migrations`.
 //   3. Lee los ficheros `.sql` de `database/migrations` en orden
 //      alfabético (prefijos numéricos: 001_, 002_, ...).
 //   4. Comprueba el checksum (SHA-256) de las migraciones ya
 //      aplicadas: si un fichero cambió después de aplicarse, aborta.
-//   5. Aplica solo las pendientes y las registra (filename + checksum).
+//   5. Parte cada fichero en sentencias y aplica solo las pendientes,
+//      una a una, registrando filename + checksum.
 //
+// El SQL se divide en sentencias para poder usar el pool de la
+// aplicación.
 // =============================================================
 
 import { createHash } from "node:crypto";
@@ -20,9 +24,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import mysql from "mysql2/promise";
-
-import database from "../src/config/database.js";
+import { closePool, dbDestination, pool } from "../src/config/database.js";
 
 // Los ficheros `.sql` en `database/migrations`
 const MIGRATION_PATH = path.join(
@@ -55,7 +57,12 @@ async function getMigrations() {
   try {
     files = await readdir(MIGRATION_PATH);
   } catch (error) {
-    throw new Error(`No se puede leer el directorio de migraciones: ${MIGRATION_PATH}`, { cause: error });
+    const wrapped = new Error(
+      `No se puede leer el directorio de migraciones: ${MIGRATION_PATH}`,
+      { cause: error },
+    );
+    wrapped.code = "MIGRATIONS_DIR_NOT_FOUND";
+    throw wrapped;
   }
 
   return files.filter((file) => file.endsWith(".sql")).sort();
@@ -102,9 +109,13 @@ function verifyChecksums(migrations, applied) {
     if (!applied.has(file)) continue;
 
     if (applied.get(file) !== checksum) {
-      throw new Error(`El fichero "${file}" cambió después de haberse aplicado ` +
+      const error = new Error(
+        `El fichero "${file}" cambió después de haberse aplicado ` +
           "(checksum distinto al registrado en schema_migrations). " +
-          "No se puede continuar: crea una nueva migración en lugar de editar una aplicada.",);
+          "No se puede continuar: crea una nueva migración en lugar de editar una aplicada.",
+      );
+      error.code = "CHECKSUM_MISMATCH";
+      throw error;
     }
   }
 }
@@ -128,23 +139,198 @@ function warnOrphaned(applied, migrations) {
 
 /**
  * -----------------------------------------------------------------
+ * Función: findStringEnd
+ * Propósito: Devuelve la posición de cierre de un literal entrecomillado
+ * (`'`, `"` o `` ` ``), respetando los escapes con barra invertida (`\'`)
+ * y las comillas duplicadas (`''`).
+ * @param {string} content - Contenido completo del fichero.
+ * @param {number} start - Posición de la comilla de apertura.
+ * @param {string} quote - Comilla utilizada.
+ * @returns {number} Índice justo después del literal (o fin del texto).
+ * -----------------------------------------------------------------
+ */
+function findStringEnd(content, start, quote) {
+  let index = start + 1;
+
+  while (index < content.length) {
+    const char = content[index];
+
+    // Barra invertida: salta el siguiente carácter (no aplica a backticks)
+    if (char === "\\" && quote !== "`") {
+      index += 2;
+      continue;
+    }
+
+    // Comilla duplicada dentro del literal: no cierra la cadena
+    if (char === quote && content[index + 1] === quote) {
+      index += 2;
+      continue;
+    }
+
+    if (char === quote) {
+      return index + 1;
+    }
+
+    index += 1;
+  }
+
+  return content.length;
+}
+
+/**
+ * -----------------------------------------------------------------
+ * Función: hasExecutableSql
+ * Propósito: Comprueba que un fragmento contiene SQL real (y no solo
+ * comentarios o espacios), para no acumular sentencias vacías al
+ * dividir el fichero.
+ * @param {string} fragment - Fragmento de SQL.
+ * @returns {boolean}
+ * -----------------------------------------------------------------
+ */
+function hasExecutableSql(fragment) {
+  return (
+    fragment
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/--[^\n]*/g, " ")
+      .replace(/#[^\n]*/g, " ")
+      .trim().length > 0
+  );
+}
+
+/**
+ * -----------------------------------------------------------------
+ * Función: splitStatements
+ * Propósito: Parte el contenido de un fichero `.sql` en sentencias
+ * individuales para poder ejecutarlas con el pool de la aplicación,
+ * que no habilita `multipleStatements`. Ignora comentarios de línea
+ * (`--`, `#`), comentarios de bloque y comillas, de modo que
+ * un `;` dentro de un literal o un comentario no corta la sentencia.
+ * Limitación: no soporta bloques `DELIMITER` (migraciones con
+ * procedimientos, triggers o funciones); el DDL de este proyecto no
+ * los incluye.
+ * @param {string} content - Contenido completo del fichero `.sql`.
+ * @returns {string[]} Sentencias listas para `connection.query()`.
+ * -----------------------------------------------------------------
+ */
+function splitStatements(content) {
+  const statements = [];
+  let buffer = "";
+  let index = 0;
+
+  while (index < content.length) {
+    const char = content[index];
+    const nextChar = content[index + 1];
+
+    // Comentario de línea: `--` seguido de espacio, o `#`
+    const isLineComment =
+      char === "#" || (char === "-" && nextChar === "-" && /\s/.test(content[index + 2] ?? " "));
+    if (isLineComment) {
+      const lineEnd = content.indexOf("\n", index);
+      const stop = lineEnd === -1 ? content.length : lineEnd;
+      buffer += content.slice(index, stop);
+      index = stop;
+      continue;
+    }
+
+    // Comentario de bloque: `/* ... */`
+    if (char === "/" && nextChar === "*") {
+      const blockEnd = content.indexOf("*/", index + 2);
+      const stop = blockEnd === -1 ? content.length : blockEnd + 2;
+      buffer += content.slice(index, stop);
+      index = stop;
+      continue;
+    }
+
+    // Literal entrecomillado: se copia entero, sin interpretar el `;`
+    if (char === "'" || char === '"' || char === "`") {
+      const stringEnd = findStringEnd(content, index, char);
+      buffer += content.slice(index, stringEnd);
+      index = stringEnd;
+      continue;
+    }
+
+    // Fin de sentencia
+    if (char === ";") {
+      buffer += ";";
+      if (hasExecutableSql(buffer)) {
+        statements.push(buffer.trim());
+      }
+      buffer = "";
+      index += 1;
+      continue;
+    }
+
+    buffer += char;
+    index += 1;
+  }
+
+  if (hasExecutableSql(buffer)) {
+    statements.push(buffer.trim());
+  }
+
+  return statements;
+}
+
+/**
+ * -----------------------------------------------------------------
+ * Función: statementPreview
+ * Propósito: Vista compacta de una sentencia para los mensajes de error
+ * (una sola línea, máximo 80 caracteres).
+ * @param {string} statement - Sentencia SQL.
+ * @returns {string}
+ * -----------------------------------------------------------------
+ */
+function statementPreview(statement) {
+  const flat = statement.replace(/\s+/g, " ").trim();
+  return flat.length > 80 ? `${flat.slice(0, 80)}…` : flat;
+}
+
+/**
+ * -----------------------------------------------------------------
  * Función: applyMigration
- * Propósito: Ejecuta las sentencias SQL contenidas en un fichero de migración
- * dentro de la base de datos y, si tiene éxito, inserta un registro en la
- * tabla `schema_migrations` guardando el nombre del fichero y su checksum.
+ * Propósito: Divide el fichero de migración en sentencias y las ejecuta
+ * una a una sobre la misma conexión (DDL en autocommit). Si todas
+ * tienen éxito, inserta un registro en `schema_migrations` con el
+ * nombre del fichero y su checksum. Ante cualquier fallo, el error
+ * indica qué sentencia falló y no se registra la migración.
  * -----------------------------------------------------------------
  */
 async function applyMigration(connection, { file, content, checksum }) {
+  const statements = splitStatements(content);
+
+  if (statements.length === 0) {
+    const error = new Error(`El fichero "${file}" no contiene sentencias SQL ejecutables.`);
+    error.code = "MIGRATION_FAILED";
+    throw error;
+  }
+
+  for (const [position, statement] of statements.entries()) {
+    try {
+      await connection.query(statement);
+    } catch (error) {
+      const wrapped = new Error(
+        `Fallo al aplicar "${file}" (sentencia ${position + 1} de ${statements.length}: ` +
+          `${statementPreview(statement)}): ${error.message}. ` +
+          "Revisa el estado de la base de datos antes de reintentar.",
+        { cause: error },
+      );
+      wrapped.code = "MIGRATION_FAILED";
+      throw wrapped;
+    }
+  }
+
   try {
-    await connection.query(content);
-    await connection.query(
-      "INSERT INTO schema_migrations (filename, checksum) VALUES (?, ?)",
-      [file, checksum],
-    );
+    await connection.query("INSERT INTO schema_migrations (filename, checksum) VALUES (?, ?)", [
+      file,
+      checksum,
+    ]);
   } catch (error) {
-    throw new Error (`Fallo al aplicar "${file}": ${error.message}. ` +
-        "Revisa el estado de la base de datos antes de reintentar.",
-      { cause: error });
+    const wrapped = new Error(
+      `No se pudo registrar la migración "${file}": ${error.message}.`,
+      { cause: error },
+    );
+    wrapped.code = "MIGRATION_FAILED";
+    throw wrapped;
   }
 }
 
@@ -152,7 +338,8 @@ async function applyMigration(connection, { file, content, checksum }) {
  * -----------------------------------------------------------------
  * Función: main
  * Propósito: Función principal que coordina todo el flujo de ejecución:
- * 1. Importa la configuración y establece la conexión con MySQL.
+ * 1. Obtiene una conexión exclusiva del pool compartido
+ *    (`src/config/database.js`) y la devuelve al terminar.
  * 2. Carga y procesa los ficheros de migración locales.
  * 3. Asegura la existencia de la tabla de control.
  * 4. Valida integridad (checksums y huérfanos).
@@ -160,14 +347,12 @@ async function applyMigration(connection, { file, content, checksum }) {
  * -----------------------------------------------------------------
  */
 async function main() {
-  const { dbDestination, poolOptions } = database;
-
   console.log(`==> Migraciones en ${MIGRATION_PATH}`);
   console.log(`==> Destino: ${dbDestination}`);
 
   const files = await getMigrations();
   const migrations = [];
-  
+
   for (const file of files) {
     const content = await readFile(path.join(MIGRATION_PATH, file), "utf8");
     migrations.push({ file, content, checksum: calculateChecksum(content) });
@@ -177,10 +362,7 @@ async function main() {
     `==> ${migrations.length} archivo(s) encontrados (orden alfabético)`,
   );
 
-  const connection = await mysql.createConnection({
-    ...poolOptions,
-    multipleStatements: true,
-  });
+  const connection = await pool.getConnection();
 
   try {
     await connection.query(CREATE_MIGRATION_TABLE);
@@ -201,17 +383,20 @@ async function main() {
     console.log(`==> ${pending.length} pendiente(s) de ${migrations.length}`);
 
     for (const migration of pending) {
-      const start_date = Date.now();
+      const startTime = Date.now();
       console.log(`  [APLICAR] ${migration.file} (${migration.checksum.slice(0, 12)}…)`);
       await applyMigration(connection, migration);
-      const duration = Date.now() - start_date;
+      const duration = Date.now() - startTime;
       console.log(`           ✓ aplicada y registrada (${duration} ms)`);
     }
 
     const total = applied.size + pending.length;
     console.log(`==> Listo: ${pending.length} aplicada(s); ${total}/${migrations.length} en total.`);
   } finally {
-    await connection.end();
+    // Devuelve la conexión al pool compartido y cierra el pool de forma
+    // ordenada: nunca queda un socket abierto tras terminar el script.
+    connection.release();
+    await closePool();
   }
 }
 
