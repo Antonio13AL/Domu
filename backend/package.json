@@ -11,6 +11,7 @@
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "db:migrate": "node database/migrate.js",
     "db:seed": "node database/seed.js",
+    "db:test:reset": "node database/reset-test.js",
     "lint": "eslint ."
   },
   "keywords": [],
