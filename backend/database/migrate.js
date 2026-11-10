@@ -336,17 +336,21 @@ async function applyMigration(connection, { file, content, checksum }) {
 
 /**
  * -----------------------------------------------------------------
- * Función: main
- * Propósito: Función principal que coordina todo el flujo de ejecución:
+ * Función: runMigrations
+ * Propósito: coordina todo el flujo de ejecución:
  * 1. Obtiene una conexión exclusiva del pool compartido
  *    (`src/config/database.js`) y la devuelve al terminar.
  * 2. Carga y procesa los ficheros de migración locales.
  * 3. Asegura la existencia de la tabla de control.
  * 4. Valida integridad (checksums y huérfanos).
- * 5. Filtra e invoca la ejecución de las migraciones pendientes.
+ * 5. Filtra e llama la ejecución de las migraciones pendientes.
+ *
+ * Se exporta para reutilizarla desde `database/reset-test.js`; el
+ * cierre del pool lo gestiona quien la llama (nunca aquí, para no
+ * cerrar un pool que aún necesita el script llamante).
  * -----------------------------------------------------------------
  */
-async function main() {
+export async function runMigrations() {
   console.log(`==> Migraciones en ${MIGRATION_PATH}`);
   console.log(`==> Destino: ${dbDestination}`);
 
@@ -393,17 +397,46 @@ async function main() {
     const total = applied.size + pending.length;
     console.log(`==> Listo: ${pending.length} aplicada(s); ${total}/${migrations.length} en total.`);
   } finally {
-    // Devuelve la conexión al pool compartido y cierra el pool de forma
-    // ordenada: nunca queda un socket abierto tras terminar el script.
+    // Devuelve la conexión al pool compartido. El cierre del pool
+    // corresponde al script que llama a esta función (CLI o reset).
     connection.release();
-    await closePool();
   }
 }
 
-main().catch((error) => {
-  console.error(`✗ Error en la migración [${error.code ?? "UNKNOWN"}]: ${error.message}`);
-  if (error.cause) {
-    console.error(`  Causa: ${error.cause.message}`);
+/**
+ * -----------------------------------------------------------------
+ * Función: cli
+ * Propósito: ejecución del fichero como script (`npm run db:migrate`).
+ * Formatea el error en consola, marca el código de salida y cierra el
+ * pool de forma ordenada en cualquier ruta (éxito o fallo), de modo que
+ * nunca queda un socket abierto tras terminar.
+ * -----------------------------------------------------------------
+ */
+async function cli() {
+  try {
+    await runMigrations();
+  } catch (error) {
+    console.error(`✗ Error en la migración [${error.code ?? "UNKNOWN"}]: ${error.message}`);
+    if (error.cause) {
+      console.error(`  Causa: ${error.cause.message}`);
+    }
+    process.exitCode = 1;
+  } finally {
+    try {
+      await closePool();
+    } catch {
+      // El pool ya estaba cerrado: no hay nada que liberar.
+    }
   }
-  process.exitCode = 1;
-});
+}
+
+// Autoejecución solo cuando el fichero se invoca directamente
+// (`node database/migrate.js`), nunca al importarlo desde otro módulo
+// como `database/reset-test.js`.
+const isDirectRun =
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  cli();
+}
