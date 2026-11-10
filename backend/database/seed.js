@@ -6,7 +6,7 @@
 // Qué hace:
 //   1. Comprueba que el esquema ya está migrado (`npm run db:migrate`).
 //   2. Hashea las dos contraseñas de demo con bcrypt (coste 12).
-//   3. Inserta dentro de una transacción los datos del §6.5:
+//   3. Inserta dentro de una transacción los datos:
 //      2 comunidades, 1 presidente y 6 vecinos, 8 incidencias,
 //      2 reuniones con asistencia, 3 votaciones con respuestas y
 //      6 reservas.
