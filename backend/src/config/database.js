@@ -1,108 +1,118 @@
 // =============================================================
 // Configuración y pool de conexiones a MySQL.
 // =============================================================
+//
+// · La validación de las variables se hace en `env.js`
+//   (`validateDatabaseEnv`): aquí solo se consume el resultado.
+// · El pool se encapsula en un campo privado `#pool` de la clase
+//   `DatabaseConfig`: fuera solo se exporta la referencia y las
+//   funciones de acceso.
+// · Los scripts de BD (`migrate`, `seed`, `reset-test`) importan
+//   `pool`, `poolOptions`, `dbDestination` y `closePool` desde aquí.
+// =============================================================
 
 import dotenv from "dotenv";
 import mysql from "mysql2/promise";
 
+import { validateDatabaseEnv } from "./env.js";
+
 dotenv.config({ quiet: true });
 
-// Mínimo imprescindible para poder abrir cualquier conexión.
-const DB_ENV = ["DB_HOST", "DB_USER", "DB_NAME"];
-
 // Charset de conexión utf8mb4 (4 bytes). La collation del proyecto
-// se fija a nivel de base de datos en las migraciones; `mysql2` no
-// admite la opción `collation`.
+// se fija a nivel de base de datos en las migraciones.
 const DB_CHARSET = "utf8mb4";
 
 class DatabaseConfig {
-  #host;
-  #port;
-  #user;
-  #password;
-  #database;
-  #connectionLimit;
-
-  constructor() {
-    const missingVars = DB_ENV.filter(
-      (variable) => process.env[variable] === undefined || process.env[variable] === "",
-    );
-
-    if (missingVars.length > 0) {
-      throw this.#missingEnvVarsError(missingVars);
-    }
-
-    this.#host = process.env.DB_HOST;
-    this.#port = this.#parsePositiveInteger(process.env.DB_PORT ?? "3306", "DB_PORT");
-    this.#user = process.env.DB_USER;
-    // La contraseña puede ser vacía (p. ej. MySQL local sin contraseña),
-    // pero la variable debe existir en `.env`.
-    this.#password = process.env.DB_PASSWORD ?? "";
-    this.#database = process.env.DB_NAME;
-    this.#connectionLimit = this.#parsePositiveInteger(
-      process.env.DB_CONNECTION_LIMIT ?? "10",
-      "DB_CONNECTION_LIMIT",
-    );
-  }
+  #pool;
+  #options;
+  #destination;
 
   /**
-   * Opciones listas para `mysql.createPool()` o `mysql.createConnection()`.
-   * Se devuelve una copia congelada para impedir modificaciones externas.
+   * @param {object} config - Salida de `validateDatabaseEnv()` (ya validada).
    */
-  get poolOptions() {
-    return Object.freeze({
-      host: this.#host,
-      port: this.#port,
-      user: this.#user,
-      password: this.#password,
-      database: this.#database,
+  constructor(config) {
+    // Impedir modificaciones externas a las opciones del pool una vez creado.
+    this.#options = Object.freeze({
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      database: config.name,
       charset: DB_CHARSET,
       waitForConnections: true,
-      connectionLimit: this.#connectionLimit,
-      queueLimit: 0, // 0 = Peticiones ilimitadas en cola si el pool está lleno
-      timezone: "Z", // Manejo consistente de fechas UTC (coincide con SET time_zone = '+00:00')
+      connectionLimit: config.connectionLimit,
+      queueLimit: 0, // 0 = peticiones ilimitadas en cola si el pool está lleno.
+      timezone: "Z", // Fechas UTC.
     });
+
+    // Identificación segura del destino, sin credenciales, para logs.
+    this.#destination = `${config.user}@${config.host}:${config.port}/${config.name}`;
+
+    // Ahora `mysql2` crea las conexiones: Crear el pool no abre ningún socket hasta la primera petición.
+    this.#pool = mysql.createPool(this.#options);
   }
 
-  /** Identificación segura del destino (sin credenciales) para logs. */
+  /** Pool compartido por todos los repositorios. */
+  get pool() {
+    return this.#pool;
+  }
+
+  /** Opciones listas para `mysql.createPool()` y `mysql.createConnection()`. */
+  get poolOptions() {
+    return this.#options;
+  }
+
+  /** Destino de conexión para mensajes de log. */
   get destination() {
-    return `${this.#user}@${this.#host}:${this.#port}/${this.#database}`;
+    return this.#destination;
   }
 
-  #missingEnvVarsError(missingVars) {
-    const error = new Error(
-      `Faltan variables de entorno obligatorias: ${missingVars.join(", ")}. ` +
-        "Copia `backend/.env.example` a `backend/.env` y completa los valores.",
-    );
-    error.code = "MISSING_ENV_VARS";
-    return error;
-  }
-
-  #parsePositiveInteger(value, name) {
-    const number = Number(value);
-    if (!Number.isInteger(number) || number < 1) {
-      const error = new Error(
-        `La variable ${name} debe ser un entero positivo; valor recibido: "${value}".`,
-      );
-      error.code = "INVALID_ENV_VAR";
-      throw error;
-    }
-    return number;
+  /** Cierra el pool de forma ordenada. */
+  async close() {
+    await this.#pool.end();
   }
 }
 
-const databaseConfig = new DatabaseConfig();
+// Validación mínima: Los scripts de base de datos no exigen variables de la API como `JWT_SECRET`.
+const databaseConfig = new DatabaseConfig(validateDatabaseEnv(process.env));
 
-// Pool compartido por todos los repositories (`pool.query(sql, [params])`).
-export const pool = mysql.createPool(databaseConfig.poolOptions);
-
-// Opciones reutilizables por los scripts de base de datos (migraciones, seed).
+export const pool = databaseConfig.pool;
 export const poolOptions = databaseConfig.poolOptions;
-
-// Destino de conexión para mensajes de log (nunca incluye la contraseña).
 export const dbDestination = databaseConfig.destination;
 
-/** Cierra el pool de forma ordenada (apagado limpio / fin de tests). */
+/** Cierra el pool de forma ordenada. */
 export async function closePool() {
-  await pool.end();
+  await databaseConfig.close();
+}
+
+/**
+ * -----------------------------------------------------------------
+ * Función: checkDatabaseConnection
+ * Propósito: comprueba que MySQL responde antes de aceptar tráfico.
+ * La llama a `server.js` al arrancar para fallar de forma clara si
+ * el servidor no está disponible o las `DB_*` de `.env` son
+ * incorrectas.
+ * @returns {Promise<string>} Versión del servidor MySQL.
+ * @throws {Error} Código `DATABASE_UNAVAILABLE`.
+ * -----------------------------------------------------------------
+ */
+export async function checkDatabaseConnection() {
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.query("SELECT VERSION() AS version");
+    return rows[0].version;
+  } catch (cause) {
+    const error = new Error(
+      `No se pudo conectar a MySQL (${dbDestination}): ${cause.message}. ` +
+        "Comprueba que el servidor esté levantado y que las variables DB_* de `.env` sean correctas.",
+      { cause },
+    );
+    error.code = "DATABASE_UNAVAILABLE";
+    throw error;
+  } finally {
+    // Si `getConnection()` falló no hay conexión que devolver.
+    connection?.release();
+  }
 }
