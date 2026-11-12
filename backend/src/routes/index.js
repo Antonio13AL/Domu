@@ -12,10 +12,18 @@
 import { Router } from "express";
 
 import authRoutes from "./authRoutes.js";
+import userRoutes from "./userRoutes.js";
+import communityRoutes from "./communityRoutes.js";
 
 const router = Router();
 
 // Autenticación: registro, login, perfil y contraseña.
 router.use("/auth", authRoutes);
+
+// Usuarios.
+router.use("/users", userRoutes);
+
+// Comunidades, miembros e invitaciones.
+router.use("/communities", communityRoutes);
 
 export default router;

@@ -1,21 +1,8 @@
 // =============================================================
-// Servicio de gestión de usuarios (capa 3 — sin objetos Express).
+// Servicio de gestión de usuarios.
 // =============================================================
 //
 // El presidente lista, crea, edita, activa y desactiva usuarios.
-// Reglas de negocio aquí:
-//
-//   · Listado: paginación y ordenación por lista blanca,
-//     filtros `role`, `is_active` e `id_community` validados antes
-//     de tocar la base de datos.
-//   · Alta: validación, correo único (409 genérico, sin confirmar
-//     que el correo exista), rol por defecto `NEIGHBOR` y hash de la
-//     contraseña con bcrypt.
-//   · Edición: solo campos de la lista blanca (anti mass-assignment)
-//     y correo único excluding al propio usuario.
-//   · Estado: nadie se desactiva a sí mismo. `is_active` no se puede
-//     cambiar por el endpoint de edición.
-//   · Ninguna respuesta contiene `password` (`UserModel.toSafeUser`).
 //
 // Sin objetos `req`/`res` y sin SQL: todo se delega en el repositorio.
 // =============================================================
@@ -27,7 +14,7 @@ import { buildPagination, parseListParams } from "../utils/pagination.js";
 import { UserRepository } from "../repositories/userRepository.js";
 import { hashPassword } from "../security/encryption.js";
 
-/** Mensaje único de conflicto de correo (no revela si existe). */
+/** Mensaje único de conflicto de correo. */
 const EMAIL_CONFLICT = "No se pudo completar la operación con los datos proporcionados.";
 
 export class UserService {
@@ -39,8 +26,8 @@ export class UserService {
 
   /**
    * -----------------------------------------------------------------
-   * Método: #parseId
-   * Propósito: convertir el segmento de ruta `:userId` en un
+   * El método es: #parseId
+   * El propósito es convertir el segmento de ruta `:userId` en un
    * identificador válido.
    * @param {unknown} value - `req.params.userId`.
    * @returns {number} `id_user` positivo.
@@ -63,8 +50,8 @@ export class UserService {
 
   /**
    * -----------------------------------------------------------------
-   * Método: list
-   * Propósito: listado paginado con filtros (`GET /users`).
+   * El método: list
+   * El propósito es listar el listado paginado con filtros (`GET /users`).
    * @param {object} query - `req.query`.
    * @returns {Promise<{ users: object[], pagination: object }>} y
    *   `page`, `limit`, `total`, `total_pages`.
@@ -128,8 +115,8 @@ export class UserService {
 
   /**
    * -----------------------------------------------------------------
-   * Método: getById
-   * Propósito: detalle de un usuario (`GET /users/:userId`).
+   * El método: getById
+   * El propósito es ver el detalle de un usuario (`GET /users/:userId`).
    * @param {unknown} userId - `req.params.userId`.
    * @returns {Promise<{ user: object }>} Usuario seguro.
    * @throws {AppError} 400 si el id no vale, 404 si no existe.
@@ -148,8 +135,8 @@ export class UserService {
 
   /**
    * -----------------------------------------------------------------
-   * Método: create
-   * Propósito: alta de usuario (`POST /users`).
+   * El método es: create
+   * El propósito es el alta de usuario (`POST /users`).
    * @param {object} input - Cuerpo de la petición.
    * @returns {Promise<{ user: object }>} Usuario creado.
    * @throws {AppError} 400 con `details.errors` si los datos no
@@ -182,7 +169,7 @@ export class UserService {
         phone: typeof body.phone === "string" && body.phone.trim() !== ""
           ? body.phone.trim()
           : null,
-        // El rol solo se acepta si es un valor del enum; si no
+        // El rol solo se acepta si es un valor del enum. En caso contrario, si no
         // llega, la cuenta nace como vecina.
         role: typeof body.role === "string" && body.role !== "" ? body.role : Role.NEIGHBOR,
         idCommunity: Number.isSafeInteger(body.id_community) ? body.id_community : null,
@@ -204,8 +191,8 @@ export class UserService {
 
   /**
    * -----------------------------------------------------------------
-   * Método: update
-   * Propósito: edición parcial de datos y rol.
+   * El método es: update
+   * El propósito es edición parcial de datos y rol.
    * (`PATCH /users/:userId`).
    * @param {unknown} userId - `req.params.userId`.
    * @param {object} input - Cuerpo de la petición.
@@ -272,8 +259,8 @@ export class UserService {
 
   /**
    * -----------------------------------------------------------------
-   * Método: changeStatus
-   * Propósito: activar o desactivar una cuenta.
+   * El método: changeStatus
+   * El propósito es activar o desactivar una cuenta.
    * (`PATCH /users/:userId/status`).
    * @param {unknown} userId - `req.params.userId`.
    * @param {object} input - Cuerpo con `is_active`.
@@ -293,8 +280,7 @@ export class UserService {
 
     const isActive = input.is_active;
 
-    // Regla del `BE-06`: nadie se desactiva a sí mismo. Sin ella, un
-    // presidente podría quedarse sin poder volver a entrar.
+    // Nadie se desactiva a sí mismo. Sin ella, un presidente podría quedarse sin poder volver a entrar.
     if (id === requesterId && isActive === false) {
       throw AppError.conflict("No puedes desactivar tu propia cuenta.");
     }

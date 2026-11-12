@@ -1,19 +1,18 @@
 // =============================================================
-// Error de aplicación (capa Service → errorHandler).
+// Error de aplicación.
 // =============================================================
 //
-// Los servicios nunca responden HTTP: lanzan `AppError` y el
+// Los servicios nunca responden HTTP: Lanzan `AppError` y el
 // middleware `src/middlewares/errorHandler.js` traduce la instancia
 // a `{ status: "error", error: { code, message, details } }`.
 //
-// `AppError` conserva exactamente las tres propiedades que el
-// manejador ya lee: `statusCode`, `code` y `details`.
+// `AppError` conserva exactamente las tres propiedades: `statusCode`, `code` y `details`.
 // =============================================================
 
 /**
  * -----------------------------------------------------------------
- * Constante: ErrorCodes
- * Propósito: códigos de error de la API, congelados. Son los
+ * La constante es: ErrorCodes
+ * El propósito es mostrar los códigos de error de la API, congelados. Son los
  * únicos valores admitidos en `AppError.code`.
  * @type {Readonly<Record<string, string>>}
  * -----------------------------------------------------------------
@@ -30,12 +29,11 @@ export const ErrorCodes = Object.freeze({
 
 /**
  * -----------------------------------------------------------------
- * Clase: AppError
- * Propósito: error controlado con estado HTTP, código de la API y
- * detalles opcionales. Se lanza en services y se propaga hasta el
- * manejador global de errores.
+ * La clase es: AppError
+ * El propósito es mostrar el error controlado con estado HTTP, código de la API y
+ * detalles opcionales. Se lanza en services y se propaga hasta el manejador global de errores.
  *
- * Uso:
+ * Se usa de la siguiente manera:
  *   throw AppError.notFound("La incidencia solicitada no existe.");
  *   throw AppError.validation("El título es obligatorio.", { field: "title" });
  * -----------------------------------------------------------------
