@@ -7,8 +7,8 @@
 // pertenece a una reunión.
 //
 // Sin dependencias de Express ni de MySQL: solo define la forma de
-// los datos y las reglas de validación de los endpoints de BE-10
-// que no son de votación.
+// los datos y las reglas de validación de los endpoints que no son
+// de votación.
 //
 // Reglas de negocio que aquí se fijan:
 //   · `date` con formato `YYYY-MM-DD` y fecha de calendario real.

@@ -264,4 +264,28 @@ export class UserRepository {
     const [result] = await pool.query(query, [isActive ? 1 : 0, userId]);
     return result.affectedRows;
   }
+
+  /**
+   * -----------------------------------------------------------------
+   * Método: isCommunityMember
+   * Propósito: comprobar que el usuario es miembro activo de la
+   * comunidad (`users.id_community` + `is_active`). Es la comprobación
+   * de pertenencia que usan las rutas de incidencias; la
+   * tabla `community_members` descrita en el §6.3 no existe en el
+   * esquema actual.
+   * @param {number} userId - `users.id_user`.
+   * @param {number} communityId - `communities.id_community`.
+   * @returns {Promise<boolean>} `true` si es miembro activo.
+   * -----------------------------------------------------------------
+   */
+  async isCommunityMember(userId, communityId) {
+    const query = `
+      SELECT 1 AS ok
+      FROM users
+      WHERE id_user = ? AND id_community = ? AND is_active = 1
+      LIMIT 1;
+    `;
+    const [rows] = await pool.query(query, [userId, communityId]);
+    return rows.length > 0;
+  }
 }

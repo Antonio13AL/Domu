@@ -1,14 +1,11 @@
 // =============================================================
-// Controlador de gestión de usuarios (capa 2 — sin SQL ni reglas).
+// Controlador de gestión de usuarios.
 // =============================================================
 //
 // Extrae `req.params`, `req.query` y `req.body`, llama al servicio y
-// responde con:
+// responde con: { "status": "success", "data": { ... } }
 //
-//   { "status": "success", "data": { ... } }
-//
-// Los errores se delegan en `next(error)` para que los traduzca el
-// `errorHandler` global.
+// Los errores se delegan en `next(error)` para que los traduzca el `errorHandler` global.
 // =============================================================
 
 import { UserService } from "../services/userService.js";
@@ -20,9 +17,6 @@ export class UserController {
     this.#userService = new UserService();
   }
 
-  /**
-   * GET /api/v1/users — 200 con listado y paginación.
-   */
   list = async (req, res, next) => {
     try {
       const { users, pagination } = await this.#userService.list(req.query);
@@ -36,9 +30,6 @@ export class UserController {
     }
   };
 
-  /**
-   * POST /api/v1/users — 201 con el usuario creado.
-   */
   create = async (req, res, next) => {
     try {
       const { user } = await this.#userService.create(req.body);
@@ -52,9 +43,6 @@ export class UserController {
     }
   };
 
-  /**
-   * GET /api/v1/users/:userId — 200 con el detalle.
-   */
   getById = async (req, res, next) => {
     try {
       const { user } = await this.#userService.getById(req.params.userId);
@@ -68,9 +56,6 @@ export class UserController {
     }
   };
 
-  /**
-   * PATCH /api/v1/users/:userId — 200 con el usuario actualizado.
-   */
   update = async (req, res, next) => {
     try {
       const { user } = await this.#userService.update(req.params.userId, req.body);
@@ -84,9 +69,6 @@ export class UserController {
     }
   };
 
-  /**
-   * PATCH /api/v1/users/:userId/status — 200 con el nuevo estado.
-   */
   changeStatus = async (req, res, next) => {
     try {
       const { user } = await this.#userService.changeStatus(

@@ -1,5 +1,5 @@
 // =============================================================
-// Tests de integración de BE-10 — reuniones, asistencia y votaciones.
+// Tests de integración — reuniones, asistencia y votaciones.
 // =============================================================
 //
 // Ejecuta el servidor Express real contra una base de datos MySQL
@@ -18,9 +18,6 @@
 // Los identificadores y las respuestas van en `snake_case`, tal como
 // los devuelve la API.
 // =============================================================
-
-import "./setup-env.js";
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 
@@ -28,6 +25,12 @@ import app from "../src/app.js";
 import { closePool, pool } from "../src/config/database.js";
 
 const API = "/api/v1";
+
+// ---------------------------------------------------------------
+// 1. Entorno: apuntar a `domu_test` ANTES de cargar la aplicación.
+// ---------------------------------------------------------------
+process.env.NODE_ENV = "test";
+process.env.DB_NAME = "domu_test";
 
 /** Reuniones creadas por la suite (se resetea la BD en cada run). */
 let lifecycleMeetingId;

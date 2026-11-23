@@ -1,8 +1,8 @@
 // =============================================================
-// Servicio de votaciones (capa 3 — sin objetos Express).
+// Servicio de votaciones
 // =============================================================
 //
-// Dominio propio de BE-10: `votes` y `vote_responses`. Las reglas de
+// Dominio propio: `votes` y `vote_responses`. Las reglas de
 // reuniones y asistencia viven en `meetingService.js`; la pertenencia
 // a la comunidad y el rol se delegan en `MembershipService`.
 //

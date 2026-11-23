@@ -1,13 +1,9 @@
 // =============================================================
-// Controlador de autenticación (capa 2 — sin SQL ni reglas).
+// Controlador de autenticación.
 // =============================================================
 //
-// Extrae los datos de `req.body`/`req.user`.
-//
-//   { "status": "success", "data": { ... } }
-//
-// Los errores se delegan en `next(error)` para que los traduzca el
-// `errorHandler` global.
+// Extrae los datos de `req.body`/`req.user`. { "status": "success", "data": { ... } }
+// Los errores se delegan en `next(error)` para que los traduzca el `errorHandler` global.
 // =============================================================
 
 import { AuthService } from "../services/authService.js";
@@ -19,9 +15,6 @@ export class AuthController {
     this.#authService = new AuthService();
   }
 
-  /**
-   * POST /api/v1/auth/register — 201 con token y usuario.
-   */
   register = async (req, res, next) => {
     try {
       const { token, user } = await this.#authService.register(req.body);
@@ -35,9 +28,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * POST /api/v1/auth/login — 200 con token y usuario.
-   */
   login = async (req, res, next) => {
     try {
       const { token, user } = await this.#authService.login(req.body);
@@ -51,9 +41,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * GET /api/v1/auth/me — 200 con perfil y comunidades.
-   */
   me = async (req, res, next) => {
     try {
       const profile = await this.#authService.getProfile(req.user.id);
@@ -67,9 +54,6 @@ export class AuthController {
     }
   };
 
-  /**
-   * PATCH /api/v1/auth/me/password — 200 con confirmación.
-   */
   changePassword = async (req, res, next) => {
     try {
       const result = await this.#authService.changePassword(req.user.id, req.body);

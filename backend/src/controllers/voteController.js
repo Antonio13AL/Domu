@@ -1,5 +1,5 @@
 // =============================================================
-// Controlador de votaciones (capa 2 — sin SQL ni reglas).
+// Controlador de votaciones.
 // =============================================================
 //
 // Dominio propio: todas las rutas cuyo recurso es una votación,

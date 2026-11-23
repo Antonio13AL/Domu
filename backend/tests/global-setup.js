@@ -1,34 +1,50 @@
 // =============================================================
-// Configuración global de la suite (BE-10).
+// Configuración global de Vitest — reset único de la BD de pruebas.
 // =============================================================
 //
-// `vitest.config.js` declara `globalSetup: ["tests/global-setup.js"]`:
-// este módulo se ejecuta UNA VEZ, en el proceso principal y antes de
-// cualquier test. Prepara la base de datos de pruebas:
+// Se ejecuta una sola vez antes de que arranque cualquier
+// fichero de test, de modo que todos comparten el mismo `domu_test`
+// recién creado. Así se evita que dos ficheros se pisen mutuamente con
+//  un DROP mientras el otro está consultando.
 //
-//   1. `database/reset-test.js` → borra y recrea `domu_test` y aplica
-//      todas las migraciones pendientes.
-//   2. `database/seed.js`        → carga los datos demo sobre
-//      `domu_test` (comunidad 1, presidente, vecinos, junta cerrada
-//      y votaciones de referencia).
-//
-// Los tests hablan con esa base de datos porque `tests/setup-env.js`
-// fija `DB_NAME` antes de que `src/app.js` cree el pool.
-//
-// Si MySQL no está disponible, la suite falla de forma explícita y
-// con un mensaje accionable: la cobertura de BE-10 es de
-// integración y necesita una base de datos real, no un doble.
+// El script exige `DB_TEST_NAME !== DB_NAME`, por eso el proceso
+// hijo recibe `DB_NAME=domu`.
+// El resto de variables las pone cada fichero de test antes de
+//  importar la aplicación.
 // =============================================================
 
-// Ejecuta `dotenv.config()` en el proceso principal, igual que hace
-// `src/app.js`, para que los hijos reciban las `DB_*` de `.env`.
-import "../src/config/env.js";
-
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import "../src/config/env.js";
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export default function globalSetup() {
+  const resetScript = fileURLToPath(
+    new URL("../database/reset-test.js", import.meta.url),
+  );
+  const testDatabase = process.env.DB_TEST_NAME || "domu_test";
+
+  // `reset-test.js` apunta él mismo el pool a `DB_TEST_NAME` y
+  // comprueba que no coincide con `DB_NAME` (protección frente a un
+  // reset accidental de la base de desarrollo): hay que dejarle leer
+  // el entorno de `.env` sin redefinirle nada.
+  runDatabaseScript("reset-test.js");
+
+  // El seed, en cambio, escribe en `DB_NAME` tal cual: se le fija
+  // explícitamente la base de datos de pruebas.
+  runDatabaseScript("seed.js", testDatabase);
+
+  execFileSync(process.execPath, [resetScript], {
+    env: { ...process.env, DB_NAME: "domu" },
+    stdio: "inherit",
+  });
+}
+
+const projectRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 /**
  * -----------------------------------------------------------------
@@ -59,25 +75,4 @@ function runDatabaseScript(script, dbName) {
   }
 
   process.stdout.write(result.stdout ?? "");
-}
-
-/**
- * -----------------------------------------------------------------
- * Función: globalSetup
- * Propósito: resetear y sembrar `domu_test` antes de la suite.
- * @returns {void}
- * -----------------------------------------------------------------
- */
-export default function globalSetup() {
-  const testDatabase = process.env.DB_TEST_NAME || "domu_test";
-
-  // `reset-test.js` apunta él mismo el pool a `DB_TEST_NAME` y
-  // comprueba que no coincide con `DB_NAME` (protección frente a un
-  // reset accidental de la base de desarrollo): hay que dejarle leer
-  // el entorno de `.env` sin redefinirle nada.
-  runDatabaseScript("reset-test.js");
-
-  // El seed, en cambio, escribe en `DB_NAME` tal cual: se le fija
-  // explícitamente la base de datos de pruebas.
-  runDatabaseScript("seed.js", testDatabase);
 }

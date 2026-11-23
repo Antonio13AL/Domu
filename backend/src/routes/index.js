@@ -3,7 +3,9 @@
 // =============================================================
 //
 // Es el único punto de montaje de la API: cada dominio se añade
-// aquí como sub-router cuando se implemente.
+// aquí como sub-router cuando se implemente. Las incidencias ya
+// están montadas en la raíz, porque su dominio ocupa dos familias
+// de caminos (`/communities/:id/issues` y `/issues/:id`).
 //
 // Las rutas que no existen caen en el middleware `notFound` y
 // responden `404 NOT_FOUND` con el formato estándar.
@@ -12,6 +14,9 @@
 import { Router } from "express";
 
 import authRoutes from "./authRoutes.js";
+import userRoutes from "./userRoutes.js";
+import communityRoutes from "./communityRoutes.js";
+import issueRoutes from "./issueRoutes.js";
 import meetingRoutes from "./meetingRoutes.js";
 import voteRoutes from "./voteRoutes.js";
 
@@ -20,14 +25,19 @@ const router = Router();
 // Autenticación: registro, login, perfil y contraseña.
 router.use("/auth", authRoutes);
 
-// Reuniones y asistencia (BE-10). Este router declara rutas
-// completas (`/communities/:id/meetings` y `/meetings/...`), por lo
-// que se monta en la raíz de la API.
-router.use(meetingRoutes);
+// Usuarios.
+router.use("/users", userRoutes);
 
-// Votaciones (BE-10): dominio separado, mismo montaje en la raíz.
-// Los caminos no se solapan con los de `meetingRoutes`, que solo
-// casan rutas de longitud exacta.
-router.use(voteRoutes);
+// Comunidades, miembros e invitaciones.
+router.use("/communities", communityRoutes);
+
+// Incidencias.
+router.use("/issues", issueRoutes);
+
+// Reuniones y asistencia.
+router.use("/meetings", meetingRoutes);
+
+// Votaciones.
+router.use("/votes", voteRoutes);
 
 export default router;

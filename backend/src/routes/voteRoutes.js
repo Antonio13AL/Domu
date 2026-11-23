@@ -1,5 +1,5 @@
 // =============================================================
-// Rutas de votaciones (BE-10).
+// Rutas de votaciones.
 // =============================================================
 //
 // Dominio propio: las siete rutas cuyo recurso es una votación,
@@ -41,7 +41,11 @@ const neighborOnly = authorizeRoles(["NEIGHBOR"]);
 // -------------------------------------------------------------
 // Votaciones de una reunión
 // -------------------------------------------------------------
-router.get("/meetings/:meetingId/votes", authenticateToken, controller.listVotes);
+router.get(
+  "/meetings/:meetingId/votes",
+  authenticateToken,
+  controller.listVotes,
+);
 router.post(
   "/meetings/:meetingId/votes",
   authenticateToken,
@@ -52,13 +56,23 @@ router.post(
 // -------------------------------------------------------------
 // Votación
 // -------------------------------------------------------------
-router.get("/votes/:voteId", authenticateToken, controller.getVote);
+router.get("/:voteId", authenticateToken, controller.getVote);
 // La ruta con sufijo se declara antes que la genérica por claridad.
-router.get("/votes/:voteId/results", authenticateToken, controller.getResults);
-router.patch("/votes/:voteId/status", authenticateToken, presidentOnly, controller.changeVoteStatus);
-router.patch("/votes/:voteId", authenticateToken, presidentOnly, controller.updateVote);
+router.get("/:voteId/results", authenticateToken, controller.getResults);
+router.patch(
+  "/:voteId/status",
+  authenticateToken,
+  presidentOnly,
+  controller.changeVoteStatus,
+);
+router.patch(
+  "/:voteId",
+  authenticateToken,
+  presidentOnly,
+  controller.updateVote,
+);
 router.post(
-  "/votes/:voteId/responses",
+  "/:voteId/responses",
   authenticateToken,
   neighborOnly,
   controller.castVote,

@@ -1,8 +1,8 @@
 // =============================================================
-// Servicio de reuniones y asistencia (capa 3 — sin objetos Express).
+// Servicio de reuniones y asistencia.
 // =============================================================
 //
-// Dominio propio de BE-10: `meetings` y `meeting_attendees`. Las
+// Dominio propio: `meetings` y `meeting_attendees`. Las
 // votaciones se atienden en `voteService.js`.
 //
 // Reglas de negocio aplicadas aquí:

@@ -1,5 +1,5 @@
 // =============================================================
-// Rutas de reuniones y asistencia (BE-10).
+// Rutas de reuniones y asistencia.
 // =============================================================
 //
 // Dominio propio: las rutas de reunión y su asistencia. Las de
@@ -58,28 +58,33 @@ router.post(
 // -------------------------------------------------------------
 // Reunión
 // -------------------------------------------------------------
-router.get("/meetings/:meetingId", authenticateToken, controller.getMeeting);
+router.get("/:meetingId", authenticateToken, controller.getMeeting);
 
 // Se declara la ruta con sufijo antes que la genérica por claridad.
 router.patch(
-  "/meetings/:meetingId/status",
+  "/:meetingId/status",
   authenticateToken,
   presidentOnly,
   controller.changeMeetingStatus,
 );
-router.patch("/meetings/:meetingId", authenticateToken, presidentOnly, controller.updateMeeting);
+router.patch(
+  "/:meetingId",
+  authenticateToken,
+  presidentOnly,
+  controller.updateMeeting,
+);
 
 // -------------------------------------------------------------
 // Asistencia
 // -------------------------------------------------------------
 router.get(
-  "/meetings/:meetingId/attendance",
+  "/:meetingId/attendance",
   authenticateToken,
   presidentOnly,
   controller.listAttendance,
 );
 router.put(
-  "/meetings/:meetingId/attendance",
+  "/:meetingId/attendance",
   authenticateToken,
   neighborOnly,
   controller.confirmAttendance,

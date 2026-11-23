@@ -1,5 +1,5 @@
 // =============================================================
-// Controlador de reuniones y asistencia (capa 2 — sin SQL ni reglas).
+// Controlador de reuniones y asistencia.
 // =============================================================
 //
 // Dominio propio: las rutas de reunión y su asistencia. Las rutas

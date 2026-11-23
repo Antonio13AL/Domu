@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --reporter=verbose --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "db:migrate": "node database/migrate.js",
     "db:seed": "node database/seed.js",
