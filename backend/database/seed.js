@@ -145,7 +145,7 @@ const ISSUES = [
     description: "Hay una fuga en el cuarto de contadores del portal B que moja el suelo del rellano.",
     category: "PLUMBING",
     priority: "HIGH",
-    state: "IN_PROGRESS",
+    status: "IN_PROGRESS",
     resolvedAt: null,
   },
   {
@@ -155,7 +155,7 @@ const ISSUES = [
     description: "La iluminación del garaje parpadea desde hace dos días.",
     category: "ELECTRICAL",
     priority: "MEDIUM",
-    state: "PENDING",
+    status: "PENDING",
     resolvedAt: null,
   },
   {
@@ -165,7 +165,7 @@ const ISSUES = [
     description: "El ascensor principal se detiene en la tercera planta y no abre.",
     category: "ELEVATOR",
     priority: "URGENT",
-    state: "IN_PROGRESS",
+    status: "IN_PROGRESS",
     resolvedAt: null,
   },
   {
@@ -175,7 +175,7 @@ const ISSUES = [
     description: "La cerradura del portal principal está rota desde el lunes.",
     category: "SECURITY",
     priority: "HIGH",
-    state: "RESOLVED",
+    status: "RESOLVED",
     resolvedAt: "2026-10-30 12:00:00",
   },
   {
@@ -185,7 +185,7 @@ const ISSUES = [
     description: "La pintura del rellano de la escalera se está descascarillando.",
     category: "OTHER",
     priority: "LOW",
-    state: "PENDING",
+    status: "PENDING",
     resolvedAt: null,
   },
   {
@@ -195,7 +195,7 @@ const ISSUES = [
     description: "Se acumula agua en el techo del trastero de la planta baja.",
     category: "PLUMBING",
     priority: "MEDIUM",
-    state: "RESOLVED",
+    status: "RESOLVED",
     resolvedAt: "2026-10-18 09:30:00",
   },
   {
@@ -205,7 +205,7 @@ const ISSUES = [
     description: "La cámara de la entrada principal no graba desde el corte de luz.",
     category: "SECURITY",
     priority: "HIGH",
-    state: "REJECTED",
+    status: "REJECTED",
     resolvedAt: null,
   },
   {
@@ -215,7 +215,7 @@ const ISSUES = [
     description: "El patio comunitario acumula hojas desde la semana pasada.",
     category: "CLEANING",
     priority: "LOW",
-    state: "PENDING",
+    status: "PENDING",
     resolvedAt: null,
   },
 ];
@@ -516,7 +516,7 @@ async function seedIssues(connection, communityIds, userIds) {
       description: issue.description,
       category: issue.category,
       priority: issue.priority,
-      state: issue.state,
+      status: issue.status,
       resolved_at: issue.resolvedAt,
     });
   }

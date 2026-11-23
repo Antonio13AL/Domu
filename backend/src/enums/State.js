@@ -11,7 +11,7 @@
 // votación. Todo se exporta congelado.
 // =============================================================
 
-/** Estado de una incidencia (`issues.state`). */
+/** Estado de una incidencia (`issues.status`). */
 export const IssueStatus = Object.freeze({
   PENDING: "PENDING",
   IN_PROGRESS: "IN_PROGRESS",
