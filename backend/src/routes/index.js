@@ -15,6 +15,7 @@ import { Router } from "express";
 
 import authRoutes from "./authRoutes.js";
 import userRoutes from "./userRoutes.js";
+import communityRoutes from "./communityRoutes.js";
 import issueRoutes from "./issueRoutes.js";
 
 const router = Router();
@@ -22,10 +23,16 @@ const router = Router();
 // Autenticación: registro, login, perfil y contraseña.
 router.use("/auth", authRoutes);
 
+// Usuarios.
+router.use("/users", userRoutes);
+
+// Comunidades, miembros e invitaciones.
+router.use("/communities", communityRoutes);
+
 // Usuarios: listado, alta, edición y estado (solo `PRESIDENT`).
 router.use("/users", userRoutes);
 
 // Incidencias.
-router.use("/", issueRoutes);
+router.use("/issues", issueRoutes);
 
 export default router;

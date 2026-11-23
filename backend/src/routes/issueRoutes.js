@@ -8,10 +8,10 @@
 // | ------ | ----------------------------------- | ------------- | -------------------------- |
 // | GET    | /communities/:communityId/issues    | Miembro/Admin | Listado con filtros y pag. |
 // | POST   | /communities/:communityId/issues    | Miembro/Admin | Crear                      |
-// | GET    | /issues/:issueId                    | Miembro/Admin | Detalle                    |
-// | PATCH  | /issues/:issueId                    | Autor/Admin   | Editar si está `PENDING`   |
-// | PATCH  | /issues/:issueId/status             | Admin         | Cambiar estado             |
-// | DELETE | /issues/:issueId                    | Admin         | Eliminar                   |
+// | GET    | /:issueId                           | Miembro/Admin | Detalle                    |
+// | PATCH  | /:issueId                           | Autor/Admin   | Editar si está `PENDING`   |
+// | PATCH  | /:issueId/status                    | Admin         | Cambiar estado             |
+// | DELETE | /:issueId                           | Admin         | Eliminar                   |
 //
 // «Admin» = `PRESIDENT`. La membresía de la comunidad y el
 // ownership (autor/`PENDING`) se comprueban en el servicio; aquí
@@ -29,17 +29,25 @@ const controller = new IssueController();
 
 const presidentOnly = authorizeRoles(["PRESIDENT"]);
 
-router.get("/communities/:communityId/issues", authenticateToken, controller.list);
-router.post("/communities/:communityId/issues", authenticateToken, controller.create);
+router.get(
+  "/communities/:communityId/issues",
+  authenticateToken,
+  controller.list,
+);
+router.post(
+  "/communities/:communityId/issues",
+  authenticateToken,
+  controller.create,
+);
 
-router.get("/issues/:issueId", authenticateToken, controller.getById);
+router.get("/:issueId", authenticateToken, controller.getById);
 router.patch(
-  "/issues/:issueId/status",
+  "/:issueId/status",
   authenticateToken,
   presidentOnly,
   controller.changeStatus,
 );
-router.delete("/issues/:issueId", authenticateToken, presidentOnly, controller.remove);
-router.patch("/issues/:issueId", authenticateToken, controller.update);
+router.delete("/:issueId", authenticateToken, presidentOnly, controller.remove);
+router.patch("/:issueId", authenticateToken, controller.update);
 
 export default router;

@@ -1,30 +1,13 @@
 // =============================================================
 // Manejador global de errores (último middleware de Express).
 // =============================================================
-//
-// Responsabilidades:
-//
-//   1. Formato estándar: `{ status: "error", error: { code,
-//      message, details } }`.
-//   2. Mapeo de errores de MySQL a códigos HTTP de la API:
-//        · `ER_DUP_ENTRY` (1062)          → 409 `CONFLICT`
-//        · `ER_ROW_IS_REFERENCED` (1451)  → 409 `CONFLICT`
-//        · resto de violaciones de datos  → 400 `VALIDATION_ERROR`
-//   3. Errores lanzados por servicios (`AppError`, `BE-03`): se
-//      respetan `statusCode`, `code` y `details` tal cual.
-//   4. Errores del body parser (`entity.too.large`, JSON inválido):
-//      → 400 `VALIDATION_ERROR`. No define un código 413,
-//      así que se trata como datos inválidos.
-//   5. Los 5xx se registran en consola; los 4xx no generan ruido.
-//      Nunca se filtran detalles internos de MySQL al cliente.
-// =============================================================
 
 /**
  * -----------------------------------------------------------------
- * Constante: MYSQL_ERROR_MESSAGES
- * Propósito: traducción al español de los errores de MySQL que la
+ * La constante es: MYSQL_ERROR_MESSAGES
+ * El propósito es traducir al español de los errores de MySQL que la
  * API puede devolver de forma controlada. El texto original de MySQL
- * (en inglés) nunca se expone: puede contener valores internos.
+ * está en inglés y nunca se expone.
  * @type {Record<string, { statusCode: number, code: string, message: string }>}
  * -----------------------------------------------------------------
  */
@@ -70,19 +53,17 @@ const MYSQL_ERROR_MESSAGES = {
 
 /**
  * -----------------------------------------------------------------
- * Función: normalizeError
- * Propósito: convertir cualquier error recibido en la forma
+ * La función es: normalizeError
+ * El propósito es convertir cualquier error recibido en la forma
  * `{ statusCode, code, message, details }`. Primero los errores ya
- * controlados por la aplicación, después los de MySQL, después los
- * del body parser y, por último, un 500 genérico.
+ * controlados por la aplicación, después los de MySQL.
  * @param {Error & object} error - Error recibido del middleware
  * anterior o de una promesa rechazada.
  * @returns {{ statusCode: number, code: string, message: string, details: null | object }}
  * -----------------------------------------------------------------
  */
 function normalizeError(error) {
-  // 1. Error de aplicación controlado (`AppError` o un  error de
-  // servicio con `statusCode`/`code` explícitos).
+  // 1. Error de aplicación controlado.
   if (error && typeof error.statusCode === "number" && error.code) {
     return {
       statusCode: error.statusCode,
@@ -92,12 +73,12 @@ function normalizeError(error) {
     };
   }
 
-  // 2. Errores de MySQL identificados por nombre o número errno.
+  // 2. Errores de MySQL identificados por nombre o número erróneo.
   if (error && typeof error.code === "string" && MYSQL_ERROR_MESSAGES[error.code]) {
     return { ...MYSQL_ERROR_MESSAGES[error.code], details: null };
   }
 
-  // 3. Cuerpo demasiado grande (`express.json({ limit: "1mb" })`).
+  // 3. Cuerpo demasiado grande.
   if (error && error.type === "entity.too.large") {
     return {
       statusCode: 400,
@@ -107,7 +88,7 @@ function normalizeError(error) {
     };
   }
 
-  // 4. JSON inválido o codificación no soportada (body parser).
+  // 4. JSON inválido o codificación no soportada.
   if (error && (error.type === "encoding.unsupported" || (error instanceof SyntaxError && typeof error.status === "number" && error.status < 500))) {
     return {
       statusCode: 400,
@@ -139,8 +120,8 @@ function normalizeError(error) {
 /**
  * -----------------------------------------------------------------
  * Middleware: errorHandler
- * Propósito: enviar la respuesta de error con el formato estándar y
- * registrar en consola los fallos 5xx (con stack solo en desarrollo).
+ * El propósito es enviar la respuesta de error con el formato estándar y
+ * registrar en consola los fallos.
  *
  * Express la reconoce como manejador de errores únicamente por su aridad.
  * @param {Error & object} error - Error capturado.
@@ -152,7 +133,7 @@ function normalizeError(error) {
  * -----------------------------------------------------------------
  */
 export function errorHandler(error, _req, res, next) {
-  // Si la respuesta ya empezó a emitirse no se puede reescribir:
+  // Si la respuesta ya empezó a emitirse no se puede reescribir y
   // se deja el error para el manejador por defecto de Express.
   if (res.headersSent) {
     next(error);
@@ -161,8 +142,7 @@ export function errorHandler(error, _req, res, next) {
 
   const normalized = normalizeError(error);
 
-  // Registro solo de errores no controlados (5xx). Los 4xx son
-  // comportamiento esperado y no deben ensuciar los logs.
+  // Registro solo de errores no controlados.
   if (normalized.statusCode >= 500) {
     console.error(
       `[error] ${_req.method} ${_req.originalUrl} → ${normalized.code}: ${normalized.message}`,
