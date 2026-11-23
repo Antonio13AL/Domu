@@ -1,0 +1,101 @@
+<DOMU> 
+
+
+Especificación de Caso de Prueba: BE-05 — Registro de Nuevos Vecinos
+
+
+
+
+
+
+
+Historial de Revisiones
+
+Fecha          Versión   Descripción                                     Autor
+12/05/2026     1.0       Versión preliminar como propuesta de desarrollo. Kevin Fuentes
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Tabla de Contenidos
+1. Descripción	4
+2. <Primera instancia del caso de prueba>	4
+  1. Descripción	4
+  2. Condiciones de ejecución	4
+  3. Entrada	4
+  4. Resultado esperado	4
+  5. Evaluación de la Prueba	4
+3. <Otra instancia del caso de prueba>	4
+  1. Descripción	4
+  2. Condiciones de ejecución	4
+  3. Entrada	5
+  4. Resultado esperado	5
+  5. Evaluación de la Prueba	5
+
+
+
+1. Descripción
+
+Este artefacto cubre el conjunto de pruebas realizadas sobre el Caso de Uso Registro de Usuarios y Autenticación. Las pruebas realizadas a este caso de uso son:
+
+∙ Creación correcta de un vecino mediante código de invitación válido con generación de JWT.
+∙ Restricción y bloqueo de registros duplicados con correo electrónico existente (conflicto 409).
+
+El entorno del cual partiremos para realizar la prueba será el formulario de entrada de la aplicación y la API REST del backend con entorno de pruebas (`domu_test`).
+
+2. Creación exitosa de vecino y emisión de JWT
+
+1. Descripción
+Verificar que el endpoint de registro (`POST /api/v1/auth/register`) procesa los datos enviados, crea el registro en la base de datos con rol de vecino y devuelve un token de acceso seguro sin exponer la contraseña.
+
+1. Condiciones de ejecución
+- La base de datos de pruebas (`domu_test`) debe estar inicializada con el esquema y migraciones aplicadas.
+- Debe existir previamente una comunidad activa en la base de datos que proporcione un código de invitación (`invite_code`) válido.
+
+1. Entrada
+Envío de una petición HTTP POST a `/api/v1/auth/register` con la siguiente carga útil (payload):
+- `name`: "Ana"
+- `surname`: "Vecina"
+- `email`: "be09_vecino@domu.es"
+- `password`: "Vecino1234!"
+- `phone`: "600 111 222"
+- `invite_code`: Código de invitación activo de la comunidad.
+
+
+Resultado esperado
+- El servidor responde con un código de estado HTTP `201 Created`.
+- El cuerpo de la respuesta contiene `status: "success"`.
+- Se devuelve un token JWT en `data.token` con una longitud mayor a 20 caracteres.
+- El objeto de usuario devuelto incluye un `id_user > 0`, rol `NEIGHBOR` y **no contiene** la propiedad `password`.
+
+1. Evaluación de la Prueba
+Realizada y satisfactoria (Validado mediante Vitest y Supertest).
+
+3. Rechazo de correo duplicado
+
+1. Descripción
+Verificar que el sistema protege la unicidad de las cuentas y maneja adecuadamente los conflictos cuando se intenta registrar un correo ya existente.
+
+1. Condiciones de ejecución
+- El usuario de prueba con el correo especificado ya debe haber sido registrado previamente en el sistema.
+
+1. Entrada
+Envío de una segunda petición HTTP POST a `/api/v1/auth/register` utilizando exactamente el mismo correo electrónico ya registrado previamente.
+
+1. Resultado esperado
+- El servidor rechaza la inserción respondiendo con un código de estado HTTP `409 Conflict`.
+- El cuerpo de la respuesta devuelve un error estructurado con `code: "CONFLICT"` y un mensaje genérico que no expone la existencia real del correo por motivos de seguridad.
+
+1. Evaluación de la Prueba
+Realizada y satisfactoria.
