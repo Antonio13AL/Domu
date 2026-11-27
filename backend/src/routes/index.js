@@ -31,13 +31,14 @@ router.use("/users", userRoutes);
 // Comunidades, miembros e invitaciones.
 router.use("/communities", communityRoutes);
 
-// Incidencias.
-router.use("/issues", issueRoutes);
+// Incidencias: rutas absolutas (`/communities/:id/issues` e
+// `/issues/:id`), montadas en la raíz del prefijo.
+router.use("/", issueRoutes);
 
-// Reuniones y asistencia.
-router.use("/meetings", meetingRoutes);
-
-// Votaciones.
-router.use("/votes", voteRoutes);
+// Reuniones, asistencia y votaciones: también rutas absolutas
+// (`/communities/:id/meetings`, `/meetings/:id`, `/meetings/:id/votes`
+// y `/votes/:id`), por lo que se montan en la raíz.
+router.use("/", meetingRoutes);
+router.use("/", voteRoutes);
 
 export default router;

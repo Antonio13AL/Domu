@@ -58,17 +58,17 @@ router.post(
 // -------------------------------------------------------------
 // Reunión
 // -------------------------------------------------------------
-router.get("/:meetingId", authenticateToken, controller.getMeeting);
+router.get("/meetings/:meetingId", authenticateToken, controller.getMeeting);
 
 // Se declara la ruta con sufijo antes que la genérica por claridad.
 router.patch(
-  "/:meetingId/status",
+  "/meetings/:meetingId/status",
   authenticateToken,
   presidentOnly,
   controller.changeMeetingStatus,
 );
 router.patch(
-  "/:meetingId",
+  "/meetings/:meetingId",
   authenticateToken,
   presidentOnly,
   controller.updateMeeting,
@@ -78,13 +78,13 @@ router.patch(
 // Asistencia
 // -------------------------------------------------------------
 router.get(
-  "/:meetingId/attendance",
+  "/meetings/:meetingId/attendance",
   authenticateToken,
   presidentOnly,
   controller.listAttendance,
 );
 router.put(
-  "/:meetingId/attendance",
+  "/meetings/:meetingId/attendance",
   authenticateToken,
   neighborOnly,
   controller.confirmAttendance,

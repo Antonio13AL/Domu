@@ -56,23 +56,23 @@ router.post(
 // -------------------------------------------------------------
 // Votación
 // -------------------------------------------------------------
-router.get("/:voteId", authenticateToken, controller.getVote);
+router.get("/votes/:voteId", authenticateToken, controller.getVote);
 // La ruta con sufijo se declara antes que la genérica por claridad.
-router.get("/:voteId/results", authenticateToken, controller.getResults);
+router.get("/votes/:voteId/results", authenticateToken, controller.getResults);
 router.patch(
-  "/:voteId/status",
+  "/votes/:voteId/status",
   authenticateToken,
   presidentOnly,
   controller.changeVoteStatus,
 );
 router.patch(
-  "/:voteId",
+  "/votes/:voteId",
   authenticateToken,
   presidentOnly,
   controller.updateVote,
 );
 router.post(
-  "/:voteId/responses",
+  "/votes/:voteId/responses",
   authenticateToken,
   neighborOnly,
   controller.castVote,

@@ -8,10 +8,16 @@
 // | ------ | ----------------------------------- | ------------- | -------------------------- |
 // | GET    | /communities/:communityId/issues    | Miembro/Admin | Listado con filtros y pag. |
 // | POST   | /communities/:communityId/issues    | Miembro/Admin | Crear                      |
-// | GET    | /:issueId                           | Miembro/Admin | Detalle                    |
-// | PATCH  | /:issueId                           | Autor/Admin   | Editar si está `PENDING`   |
-// | PATCH  | /:issueId/status                    | Admin         | Cambiar estado             |
-// | DELETE | /:issueId                           | Admin         | Eliminar                   |
+// | GET    | /issues/:issueId                    | Miembro/Admin | Detalle                    |
+// | PATCH  | /issues/:issueId                    | Autor/Admin   | Editar si está `PENDING`   |
+// | PATCH  | /issues/:issueId/status             | Admin         | Cambiar estado             |
+// | DELETE | /issues/:issueId                    | Admin         | Eliminar                   |
+//
+// Todas las rutas se declaran **absolutas** (sin prefijo del
+// montaje) porque este router se monta en la raíz de `/api/v1`.
+// Si se declararan relativas (`/:issueId`), quedarían inalcanzables
+// con la familia `/communities/:communityId/issues` o, montado en
+// `/issues`, capturarían rutas desconocidas de un solo segmento.
 //
 // «Admin» = `PRESIDENT`. La membresía de la comunidad y el
 // ownership (autor/`PENDING`) se comprueban en el servicio; aquí
@@ -40,14 +46,19 @@ router.post(
   controller.create,
 );
 
-router.get("/:issueId", authenticateToken, controller.getById);
+router.get("/issues/:issueId", authenticateToken, controller.getById);
 router.patch(
-  "/:issueId/status",
+  "/issues/:issueId/status",
   authenticateToken,
   presidentOnly,
   controller.changeStatus,
 );
-router.delete("/:issueId", authenticateToken, presidentOnly, controller.remove);
-router.patch("/:issueId", authenticateToken, controller.update);
+router.delete(
+  "/issues/:issueId",
+  authenticateToken,
+  presidentOnly,
+  controller.remove,
+);
+router.patch("/issues/:issueId", authenticateToken, controller.update);
 
 export default router;
