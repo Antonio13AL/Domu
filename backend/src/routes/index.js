@@ -22,6 +22,12 @@ import voteRoutes from "./voteRoutes.js";
 
 const router = Router();
 
+// ---------------------------------------------------------------
+// 1. Familias con prefijo fijo (`/auth`, `/users`, `/communities`,
+//    `/issues`, `/meetings`, `/votes`): el prefijo se consume aquí
+//    y cada router resuelve sus rutas relativas (`/:issueId`, …).
+// ---------------------------------------------------------------
+
 // Autenticación: registro, login, perfil y contraseña.
 router.use("/auth", authRoutes);
 
