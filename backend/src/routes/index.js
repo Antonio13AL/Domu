@@ -4,7 +4,7 @@
 //
 // Es el único punto de montaje de la API: cada dominio se añade
 // aquí como sub-router cuando se implemente. Los dominios cuyos
-// routers declaran rutas absolutas (reservas, incidencias,
+// routers declaran rutas absolutas (panel, reservas, incidencias,
 // reuniones y votaciones) se montan en la raíz; los que declaran
 // rutas relativas (`/auth`, `/users` y `/communities`) consumen su
 // propio prefijo.
@@ -18,6 +18,7 @@ import { Router } from "express";
 import authRoutes from "./authRoutes.js";
 import userRoutes from "./userRoutes.js";
 import communityRoutes from "./communityRoutes.js";
+import dashboardRoutes from "./dashboardRoutes.js";
 import bookingRoutes from "./bookingRoutes.js";
 import issueRoutes from "./issueRoutes.js";
 import meetingRoutes from "./meetingRoutes.js";
@@ -55,5 +56,8 @@ router.use("/", issueRoutes);
 // y `/votes/:id`), por lo que se montan en la raíz.
 router.use("/", meetingRoutes);
 router.use("/", voteRoutes);
+
+// Panel: rutas absolutas (`/communities/:id/dashboard/summary`).
+router.use("/", dashboardRoutes);
 
 export default router;
