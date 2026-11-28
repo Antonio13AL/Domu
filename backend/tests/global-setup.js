@@ -5,24 +5,20 @@
 // Se ejecuta una sola vez antes de que arranque cualquier
 // fichero de test, de modo que todos comparten el mismo `domu_test`
 // recién creado. Así se evita que dos ficheros se pisen mutuamente con
-//  un DROP mientras el otro está consultando.
+// un DROP mientras el otro está consultando.
 //
-// El script exige `DB_TEST_NAME !== DB_NAME`, por eso el proceso
-// hijo recibe `DB_NAME=domu`.
-// El resto de variables las pone cada fichero de test antes de
-//  importar la aplicación.
+// Secuencia: `reset-test.js` (DROP + CREATE + migraciones) y, después,
+// `seed.js` sobre la base de pruebas, que es la que los tests esperan
+// encontrar. El destino de los tests lo fija `tests/setup-env.js` vía
+// `test.setupFiles`, antes de que ningún test importe `src/app.js`.
 // =============================================================
 
-import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import "../src/config/env.js";
 
 export default function globalSetup() {
-  const resetScript = fileURLToPath(
-    new URL("../database/reset-test.js", import.meta.url),
-  );
   const testDatabase = process.env.DB_TEST_NAME || "domu_test";
 
   // `reset-test.js` apunta él mismo el pool a `DB_TEST_NAME` y
@@ -32,13 +28,9 @@ export default function globalSetup() {
   runDatabaseScript("reset-test.js");
 
   // El seed, en cambio, escribe en `DB_NAME` tal cual: se le fija
-  // explícitamente la base de datos de pruebas.
+  // explícitamente la base de datos de pruebas. Debe ser el último
+  // paso: un reset posterior dejaría `domu_test` sin datos de demo.
   runDatabaseScript("seed.js", testDatabase);
-
-  execFileSync(process.execPath, [resetScript], {
-    env: { ...process.env, DB_NAME: "domu" },
-    stdio: "inherit",
-  });
 }
 
 const projectRoot = path.resolve(
