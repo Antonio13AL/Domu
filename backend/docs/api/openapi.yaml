@@ -1,0 +1,2185 @@
+# =============================================================
+# Especificación OpenAPI de la API de Domu
+# =============================================================
+#
+# Fuente: las 47 operaciones realmente montadas en
+# `src/routes/*.js` (los ficheros `*Routes.js` y `src/routes/index.js`).
+# Los errores siguen el formato:
+#   { "status": "error", "error": { "code", "message", "details?" } }
+# y las respuestas de éxito:
+#   { "status": "success", "data": { ... } }
+#
+# =============================================================
+
+openapi: 3.0.3
+
+info:
+  title: Domu API
+  version: 1.0.0
+  description: |
+    API REST de **Domu**, plataforma de gestión de comunidades de
+    vecinos (incidencias, reuniones, votaciones y reservas de espacios
+    comunes).
+
+    - **Autenticación:** JWT con cabecera `Authorization: Bearer <token>`.
+    - **Formato de respuesta:** `{ "status": "success", "data": ... }`
+      en éxito y `{ "status": "error", "error": { "code", "message", "details?" } }`
+      en error (`details` solo en `VALIDATION_ERROR`).
+    - **Fechas y horas:** fechas `YYYY-MM-DD`, horas `HH:mm:ss`
+      (se acepta también `HH:mm`) y marcas UTC `YYYY-MM-DD HH:mm:ss`.
+    - **Paginación:** `page` (≥ 1), `limit` (1–100) y los bloques
+      `page`, `limit`, `total`, `total_pages` en la respuesta.
+    - **Autorización:** los identificadores y el estado son de
+      servidor; los cuerpos solo admiten los campos documentados
+      (anti mass-assignment).
+  license:
+    name: Privado (proyecto académico Domu)
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Servidor local de desarrollo (`npm run dev`)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+    description: Registro, acceso y perfil del usuario autenticado.
+  - name: users
+    description: Gestión de usuarios (solo `PRESIDENT`).
+  - name: communities
+    description: Comunidades, miembros e invitaciones.
+  - name: issues
+    description: Incidencias de la comunidad.
+  - name: meetings
+    description: Reuniones y asistencia.
+  - name: votes
+    description: Votaciones asociadas a una reunión.
+  - name: bookings
+    description: Reservas de espacios comunes.
+  - name: dashboard
+    description: Resumen de KPIs por rol.
+
+# ---------------------------------------------------------------
+# Operaciones
+# ---------------------------------------------------------------
+paths:
+
+  # ============================ AUTH ============================
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Registro de un nuevo vecino
+      operationId: register
+      description: |
+        Crea la cuenta. Si el cuerpo trae `invite_code`, el usuario se
+        vincula a esa comunidad. El rate limit de registro es más
+        estricto que el global.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Cuenta creada y token emitido.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSessionEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Acceso con correo y contraseña
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Sesión iniciada; el token caduca en 8 horas.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSessionEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Perfil del usuario autenticado
+      operationId: getProfile
+      responses:
+        '200':
+          description: Usuario y comunidades a las que pertenece.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me/password:
+    patch:
+      tags: [auth]
+      summary: Cambio de contraseña
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordChangeRequest' }
+      responses:
+        '200':
+          description: Contraseña actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # =========================== USERS ============================
+  /users:
+    get:
+      tags: [users]
+      summary: Listado de usuarios
+      operationId: listUsers
+      description: Solo `PRESIDENT`. Orden por lista blanca.
+      parameters:
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/order' }
+        - { $ref: '#/components/parameters/search' }
+        - name: sort
+          in: query
+          description: 'Lista blanca: `name`, `surname`, `email`, `role`, `created_at`.'
+          schema: { type: string, default: created_at, enum: [name, surname, email, role, created_at] }
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/Role' }
+        - name: is_active
+          in: query
+          schema: { type: boolean }
+        - name: id_community
+          in: query
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200': { $ref: '#/components/responses/UserList' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [users]
+      summary: Alta de usuario
+      operationId: createUser
+      description: Solo `PRESIDENT`. La contraseña se guarda hasheada (bcrypt, coste 12).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreateRequest' }
+      responses:
+        '201':
+          description: Usuario creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /users/{userId}:
+    parameters:
+      - { $ref: '#/components/parameters/userId' }
+    get:
+      tags: [users]
+      summary: Detalle de usuario
+      operationId: getUser
+      description: Solo `PRESIDENT`.
+      responses:
+        '200':
+          description: Usuario.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [users]
+      summary: Edición de usuario
+      operationId: updateUser
+      description: Solo `PRESIDENT`. Nunca devuelve `password_hash`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdateRequest' }
+      responses:
+        '200':
+          description: Usuario actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /users/{userId}/status:
+    parameters:
+      - { $ref: '#/components/parameters/userId' }
+    patch:
+      tags: [users]
+      summary: Activación / desactivación de usuario
+      operationId: changeUserStatus
+      description: Solo `PRESIDENT`. Un usuario no puede desactivarse a sí mismo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_active]
+              additionalProperties: false
+              properties:
+                is_active: { type: boolean }
+      responses:
+        '200':
+          description: Estado actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ======================== COMMUNITIES =========================
+  /communities:
+    get:
+      tags: [communities]
+      summary: Listado de comunidades
+      operationId: listCommunities
+      description: |
+        El `PRESIDENT` ve todas las comunidades; el `NEIGHBOR` solo
+        la suya (lista vacía si no tiene comunidad, para no revelar
+        el resto).
+      parameters:
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/order' }
+        - { $ref: '#/components/parameters/search' }
+        - name: sort
+          in: query
+          description: 'Lista blanca: `name`, `city`, `created_at`.'
+          schema: { type: string, default: created_at, enum: [name, city, created_at] }
+        - name: is_active
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/CommunityList' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [communities]
+      summary: Alta de comunidad
+      operationId: createCommunity
+      description: Solo `PRESIDENT`. Se genera un `invite_code` único.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityCreateRequest' }
+      responses:
+        '201':
+          description: Comunidad creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /communities/{communityId}:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    get:
+      tags: [communities]
+      summary: Detalle de comunidad
+      operationId: getCommunity
+      description: Exige pertenencia activa a la comunidad.
+      responses:
+        '200':
+          description: Comunidad (incluye `invite_code` e `is_active`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [communities]
+      summary: Edición de comunidad
+      operationId: updateCommunity
+      description: |
+        Solo `PRESIDENT`. Solo `name`, `address`, `city` y
+        `postal_code`; `invite_code` e `is_active` tienen endpoint
+        propio.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityUpdateRequest' }
+      responses:
+        '200':
+          description: Comunidad actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /communities/{communityId}/status:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    patch:
+      tags: [communities]
+      summary: Archivar o reactivar comunidad
+      operationId: changeCommunityStatus
+      description: Solo `PRESIDENT`. `is_active` debe ser booleano JSON estricto.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_active]
+              additionalProperties: false
+              properties:
+                is_active: { type: boolean }
+      responses:
+        '200':
+          description: Estado actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /communities/{communityId}/invite-code:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    post:
+      tags: [communities]
+      summary: Rotación del código de invitación
+      operationId: rotateInviteCode
+      description: |
+        Solo `PRESIDENT`. Invalida el código anterior; 409 si el nuevo
+        colisiona con el de otra comunidad.
+      responses:
+        '200':
+          description: Comunidad con el `invite_code` nuevo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /communities/{communityId}/members:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    get:
+      tags: [communities]
+      summary: Listado de miembros
+      operationId: listMembers
+      description: Exige pertenencia activa. Nunca devuelve contraseñas.
+      parameters:
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/order' }
+        - { $ref: '#/components/parameters/search' }
+        - name: sort
+          in: query
+          description: 'Lista blanca: `name`, `surname`, `role`, `created_at`.'
+          schema: { type: string, default: created_at, enum: [name, surname, role, created_at] }
+      responses:
+        '200': { $ref: '#/components/responses/MemberList' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [communities]
+      summary: Vincular un usuario a la comunidad
+      operationId: addMember
+      description: |
+        Solo `PRESIDENT`. 409 si el usuario ya está vinculado a esta
+        comunidad o a otra (la desvinculación no borra la fila).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberLinkRequest' }
+      responses:
+        '201':
+          description: Miembro vinculado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /communities/{communityId}/members/{userId}:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+      - { $ref: '#/components/parameters/memberUserId' }
+    patch:
+      tags: [communities]
+      summary: Edición de la vivienda de un miembro
+      operationId: updateMember
+      description: Solo `PRESIDENT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberUpdateRequest' }
+      responses:
+        '200':
+          description: Miembro actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [communities]
+      summary: Desvincular un miembro de la comunidad
+      operationId: removeMember
+      description: |
+        Solo `PRESIDENT`. Pone `id_community` a `NULL` sin borrar la
+        fila, para conservar el historial.
+      responses:
+        '200':
+          description: Miembro desvinculado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ========================== ISSUES ============================
+  /communities/{communityId}/issues:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    get:
+      tags: [issues]
+      summary: Listado de incidencias de la comunidad
+      operationId: listIssues
+      description: Exige pertenencia activa. Paginado en servidor.
+      parameters:
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/order' }
+        - { $ref: '#/components/parameters/search' }
+        - name: sort
+          in: query
+          description: 'Lista blanca: `created_at`, `updated_at`, `title`, `priority`, `status`.'
+          schema: { type: string, default: created_at, enum: [created_at, updated_at, title, priority, status] }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/IssueStatus' }
+        - name: priority
+          in: query
+          schema: { $ref: '#/components/schemas/IssuePriority' }
+        - name: category
+          in: query
+          schema: { $ref: '#/components/schemas/IssueCategory' }
+      responses:
+        '200': { $ref: '#/components/responses/IssueList' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [issues]
+      summary: Alta de incidencia
+      operationId: createIssue
+      description: |
+        El autor es siempre el usuario autenticado y nace en estado
+        `PENDING`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IssueCreateRequest' }
+      responses:
+        '201':
+          description: Incidencia creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /issues/{issueId}:
+    parameters:
+      - { $ref: '#/components/parameters/issueId' }
+    get:
+      tags: [issues]
+      summary: Detalle de incidencia
+      operationId: getIssue
+      responses:
+        '200':
+          description: Incidencia.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [issues]
+      summary: Edición de incidencia
+      operationId: updateIssue
+      description: |
+        El autor edita solo mientras está `PENDING`; a partir de ahí
+        solo el `PRESIDENT`. `status` no es editable por aquí.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IssueUpdateRequest' }
+      responses:
+        '200':
+          description: Incidencia actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [issues]
+      summary: Borrado de incidencia
+      operationId: deleteIssue
+      description: Solo `PRESIDENT`.
+      responses:
+        '200':
+          description: Confirmación de borrado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeletedEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /issues/{issueId}/status:
+    parameters:
+      - { $ref: '#/components/parameters/issueId' }
+    patch:
+      tags: [issues]
+      summary: Cambio de estado de incidencia
+      operationId: changeIssueStatus
+      description: |
+        Solo `PRESIDENT`. Transiciones permitidas:
+        `PENDING → IN_PROGRESS | REJECTED`,
+        `IN_PROGRESS → RESOLVED | REJECTED`; `RESOLVED` y `REJECTED`
+        son finales. Al resolver se sella `resolved_at`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IssueStatusRequest' }
+      responses:
+        '200':
+          description: Incidencia en su nuevo estado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ========================== MEETINGS ==========================
+  /communities/{communityId}/meetings:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    get:
+      tags: [meetings]
+      summary: Listado de reuniones de la comunidad
+      operationId: listMeetings
+      parameters:
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/order' }
+        - { $ref: '#/components/parameters/search' }
+        - name: sort
+          in: query
+          description: 'Lista blanca: `date`, `created_at`, `title`, `state`.'
+          schema: { type: string, default: date, enum: [date, created_at, title, state] }
+        - name: state
+          in: query
+          schema: { $ref: '#/components/schemas/MeetingStatus' }
+      responses:
+        '200': { $ref: '#/components/responses/MeetingList' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [meetings]
+      summary: Alta de reunión
+      operationId: createMeeting
+      description: Solo `PRESIDENT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeetingCreateRequest' }
+      responses:
+        '201':
+          description: Reunión creada en `SCHEDULED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /meetings/{meetingId}:
+    parameters:
+      - { $ref: '#/components/parameters/meetingId' }
+    get:
+      tags: [meetings]
+      summary: Detalle de reunión
+      operationId: getMeeting
+      responses:
+        '200':
+          description: Reunión.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [meetings]
+      summary: Edición de reunión
+      operationId: updateMeeting
+      description: |
+        Solo `PRESIDENT`. `minutes` solo es editable cuando la
+        reunión está `CLOSED` (en `POST` se rechaza con 400).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeetingUpdateRequest' }
+      responses:
+        '200':
+          description: Reunión actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /meetings/{meetingId}/status:
+    parameters:
+      - { $ref: '#/components/parameters/meetingId' }
+    patch:
+      tags: [meetings]
+      summary: Cambio de estado de reunión
+      operationId: changeMeetingStatus
+      description: |
+        Solo `PRESIDENT`. Transiciones: `SCHEDULED → IN_PROGRESS |
+        CANCELLED` e `IN_PROGRESS → CLOSED | CANCELLED` (409 en el
+        resto). Al cerrar se cierran en cascada las votaciones
+        `OPEN` de la reunión.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeetingStatusRequest' }
+      responses:
+        '200':
+          description: Reunión en su nuevo estado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /meetings/{meetingId}/attendance:
+    parameters:
+      - { $ref: '#/components/parameters/meetingId' }
+    get:
+      tags: [meetings]
+      summary: Asistencia a una reunión
+      operationId: listAttendance
+      description: |
+        Solo `PRESIDENT`. Devuelve los miembros con su
+        `attendance_status` (`PENDING` si aún no han confirmado).
+      responses:
+        '200':
+          description: Lista de asistencia.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendeesEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [meetings]
+      summary: Confirmación de asistencia del propio vecino
+      operationId: confirmAttendance
+      description: |
+        Solo `NEIGHBOR` (su propia asistencia). Queda bloqueado si la
+        reunión está `CANCELLED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttendanceRequest' }
+      responses:
+        '200':
+          description: Asistencia registrada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # =========================== VOTES ============================
+  /meetings/{meetingId}/votes:
+    parameters:
+      - { $ref: '#/components/parameters/meetingId' }
+    get:
+      tags: [votes]
+      summary: Votaciones de una reunión
+      operationId: listVotes
+      parameters:
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/order' }
+        - { $ref: '#/components/parameters/search' }
+        - name: sort
+          in: query
+          description: 'Lista blanca: `created_at`, `title`, `status`.'
+          schema: { type: string, default: created_at, enum: [created_at, title, status] }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/VoteStatus' }
+      responses:
+        '200': { $ref: '#/components/responses/VoteList' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [votes]
+      summary: Alta de votación
+      operationId: createVote
+      description: |
+        Solo `PRESIDENT` y solo en una reunión `SCHEDULED` o
+        `IN_PROGRESS`. Nace en `DRAFT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VoteCreateRequest' }
+      responses:
+        '201':
+          description: Votación creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoteEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /votes/{voteId}:
+    parameters:
+      - { $ref: '#/components/parameters/voteId' }
+    get:
+      tags: [votes]
+      summary: Detalle de votación
+      operationId: getVote
+      responses:
+        '200':
+          description: Votación.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoteEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [votes]
+      summary: Edición de votación
+      operationId: updateVote
+      description: Solo `PRESIDENT` y mientras la votación está `DRAFT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VoteUpdateRequest' }
+      responses:
+        '200':
+          description: Votación actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoteEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /votes/{voteId}/status:
+    parameters:
+      - { $ref: '#/components/parameters/voteId' }
+    patch:
+      tags: [votes]
+      summary: Apertura o cierre de votación
+      operationId: changeVoteStatus
+      description: |
+        Solo `PRESIDENT`. `DRAFT → OPEN` exige `opens_at` y
+        `closes_at` con ventana no vencida; `OPEN → CLOSED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VoteStatusRequest' }
+      responses:
+        '200':
+          description: Votación en su nuevo estado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoteEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /votes/{voteId}/results:
+    parameters:
+      - { $ref: '#/components/parameters/voteId' }
+    get:
+      tags: [votes]
+      summary: Recuento de una votación
+      operationId: getVoteResults
+      description: |
+        El `PRESIDENT` siempre; el `NEIGHBOR` solo cuando la
+        votación está `CLOSED` (403 en otro caso).
+      responses:
+        '200':
+          description: Votación, resultados y total de respuestas.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoteResultsEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /votes/{voteId}/responses:
+    parameters:
+      - { $ref: '#/components/parameters/voteId' }
+    post:
+      tags: [votes]
+      summary: Voto del vecino
+      operationId: createVoteResponse
+      description: |
+        Solo `NEIGHBOR` (la votación es acción de vecino). Voto único
+        por usuario: un segundo voto responde 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VoteResponseRequest' }
+      responses:
+        '201':
+          description: Voto registrado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoteResponseEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ========================== BOOKINGS ==========================
+  /communities/{communityId}/bookings:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    get:
+      tags: [bookings]
+      summary: Listado de reservas de la comunidad
+      operationId: listBookings
+      description: Exige pertenencia activa a la comunidad.
+      parameters:
+        - { $ref: '#/components/parameters/page' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/order' }
+        - { $ref: '#/components/parameters/search' }
+        - name: sort
+          in: query
+          description: 'Lista blanca: `booking_date`, `start_time`, `created_at`, `space_name`, `status`.'
+          schema: { type: string, default: booking_date, enum: [booking_date, start_time, created_at, space_name, status] }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/BookingStatus' }
+        - name: id_user
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: space_name
+          in: query
+          description: Coincidencia parcial, escapada para búsqueda literal.
+          schema: { type: string, maxLength: 100 }
+        - name: booking_date
+          in: query
+          schema: { type: string, format: date }
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200': { $ref: '#/components/responses/BookingList' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [bookings]
+      summary: Alta de reserva
+      operationId: createBooking
+      description: |
+        Nace en `PENDING`. Reglas: sin fechas pasadas, máximo 30 días
+        de antelación, `start_time < end_time` y duración entre 30
+        minutos y 4 horas. El solapamiento se comprueba dentro de una
+        transacción con bloqueo: si la franja está ocupada responde
+        409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingCreateRequest' }
+      responses:
+        '201':
+          description: Reserva creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /communities/{communityId}/bookings/availability:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    get:
+      tags: [bookings]
+      summary: Franjas ocupadas de un espacio
+      operationId: getBookingAvailability
+      description: |
+        Devuelve las reservas `PENDING`/`CONFIRMED` de un espacio y
+        fecha concretos; `CANCELLED` y `REJECTED` liberan la franja.
+        No expone `id_user` ni `notes`.
+      parameters:
+        - name: space_name
+          in: query
+          required: true
+          schema: { type: string, maxLength: 100 }
+        - name: booking_date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: exclude_booking_id
+          in: query
+          description: Reserva que no debe contarse (al editar la propia).
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Franjas ocupadas.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /bookings/{bookingId}:
+    parameters:
+      - { $ref: '#/components/parameters/bookingId' }
+    get:
+      tags: [bookings]
+      summary: Detalle de reserva
+      operationId: getBooking
+      description: 'Alcance «Autor/Admin»: el propio vecino o el `PRESIDENT`.'
+      responses:
+        '200':
+          description: Reserva.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [bookings]
+      summary: Edición de reserva
+      operationId: updateBooking
+      description: |
+        Autor o `PRESIDENT`, solo mientras está `PENDING`. El par de
+        horas se valida contra la fila guardada si el cuerpo trae una
+        sola de las dos, y el solapamiento se comprueba dentro de la
+        misma transacción que escribe (409 si la franja ya está
+        ocupada).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingUpdateRequest' }
+      responses:
+        '200':
+          description: Reserva actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [bookings]
+      summary: Cancelación de reserva
+      operationId: deleteBooking
+      description: |
+        No borra la fila: las reservas son histórico, así que la
+        cancelan con el mismo permiso que `PATCH .../status` (el
+        vecino, solo las suyas en `PENDING`; el `PRESIDENT`, las de
+        su comunidad).
+      responses:
+        '200':
+          description: Reserva cancelada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingEnvelope' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /bookings/{bookingId}/status:
+    parameters:
+      - { $ref: '#/components/parameters/bookingId' }
+    patch:
+      tags: [bookings]
+      summary: Confirmación, rechazo o cancelación de reserva
+      operationId: changeBookingStatus
+      description: |
+        Solo `PRESIDENT` («Admin» en la tabla de endpoints). Estados
+        de salida: `CONFIRMED`, `CANCELLED` o `REJECTED`; `PENDING` no
+        se impone desde el cuerpo. `reviewed_by` registra quién
+        resolvió.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingStatusRequest' }
+      responses:
+        '200':
+          description: Reserva en su nuevo estado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ========================= DASHBOARD ==========================
+  /communities/{communityId}/dashboard/summary:
+    parameters:
+      - { $ref: '#/components/parameters/communityId' }
+    get:
+      tags: [dashboard]
+      summary: Resumen de KPIs por rol
+      operationId: getDashboardSummary
+      description: |
+        Cualquier miembro activo de la comunidad. El bloque `kpis`
+        cambia según el rol:
+        - `NEIGHBOR`: `open_issues` (propias), `pending_votes`,
+          `next_meeting` y `next_booking`.
+        - `PRESIDENT`: además `pending_bookings`, `issues_by_status`,
+          `bookings_by_status`, `active_members`,
+          `upcoming_meetings` y `open_votes`.
+        La marca `generated_at` la fija el servidor (`YYYY-MM-DD HH:mm:ss`).
+      responses:
+        '200':
+          description: Resumen del panel.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SummaryEnvelope' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+# ---------------------------------------------------------------
+# Componentes
+# ---------------------------------------------------------------
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Token JWT firmado por `POST /auth/login` (caducidad 8 horas).
+        Cabecera: `Authorization: Bearer <token>`.
+
+  parameters:
+    communityId:
+      name: communityId
+      in: path
+      required: true
+      description: Identificador de comunidad.
+      schema: { type: integer, minimum: 1 }
+    userId:
+      name: userId
+      in: path
+      required: true
+      description: Identificador de usuario.
+      schema: { type: integer, minimum: 1 }
+    memberUserId:
+      name: userId
+      in: path
+      required: true
+      description: Identificador del miembro dentro de la comunidad.
+      schema: { type: integer, minimum: 1 }
+    issueId:
+      name: issueId
+      in: path
+      required: true
+      description: Identificador de incidencia.
+      schema: { type: integer, minimum: 1 }
+    meetingId:
+      name: meetingId
+      in: path
+      required: true
+      description: Identificador de reunión.
+      schema: { type: integer, minimum: 1 }
+    voteId:
+      name: voteId
+      in: path
+      required: true
+      description: Identificador de votación.
+      schema: { type: integer, minimum: 1 }
+    bookingId:
+      name: bookingId
+      in: path
+      required: true
+      description: Identificador de reserva.
+      schema: { type: integer, minimum: 1 }
+    page:
+      name: page
+      in: query
+      description: Página (1-based).
+      schema: { type: integer, minimum: 1, default: 1 }
+    limit:
+      name: limit
+      in: query
+      description: Tamaño de página.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    order:
+      name: order
+      in: query
+      description: Sentido de la ordenación.
+      schema: { type: string, enum: [asc, desc], default: asc }
+    search:
+      name: search
+      in: query
+      description: Búsqueda textual (máximo 100 caracteres), escapada para `LIKE` literal.
+      schema: { type: string, maxLength: 100 }
+
+  responses:
+    ValidationFailed:
+      description: Datos de entrada inválidos (400).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            status: error
+            error:
+              code: VALIDATION_ERROR
+              message: Datos de entrada inválidos.
+              details:
+                errors: ["El título es obligatorio."]
+    Unauthorized:
+      description: Token ausente, inválido o cuenta inactiva (401).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            status: error
+            error: { code: UNAUTHORIZED, message: "Debe autenticarse para acceder a este recurso." }
+    Forbidden:
+      description: |
+        Sin permisos (403): rol no autorizado o ausencia de pertenencia
+        activa a la comunidad. Se responde también cuando la comunidad
+        no existe, para no revelar su existencia.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            status: error
+            error: { code: FORBIDDEN, message: "No tiene permisos para realizar esta operación." }
+    NotFound:
+      description: Recurso inexistente (404).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            status: error
+            error: { code: NOT_FOUND, message: "El recurso solicitado no existe." }
+    Conflict:
+      description: |
+        Conflicto con el estado actual (409): duplicidad, transición
+        no permitida o franja ocupada.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            status: error
+            error: { code: CONFLICT, message: "La franja solicitada ya está ocupada por otra reserva." }
+    RateLimited:
+      description: Demasiadas peticiones (429) por el rate limit.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example:
+            status: error
+            error: { code: RATE_LIMITED, message: "Demasiadas peticiones. Inténtelo de nuevo más tarde." }
+    UserList:
+      description: Página de usuarios.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/UserListEnvelope' }
+    CommunityList:
+      description: Página de comunidades.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CommunityListEnvelope' }
+    MemberList:
+      description: Página de miembros.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/MemberListEnvelope' }
+    IssueList:
+      description: Página de incidencias.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/IssueListEnvelope' }
+    MeetingList:
+      description: Página de reuniones.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/MeetingListEnvelope' }
+    VoteList:
+      description: Página de votaciones.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/VoteListEnvelope' }
+    BookingList:
+      description: Página de reservas.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/BookingListEnvelope' }
+
+  schemas:
+
+    # ---------------------- Genéricos ----------------------
+    ErrorEnvelope:
+      type: object
+      required: [status, error]
+      properties:
+        status: { type: string, enum: [error] }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, RATE_LIMITED, INTERNAL_ERROR]
+            message: { type: string }
+            details:
+              description: Solo se emite en `VALIDATION_ERROR`.
+              type: object
+              nullable: true
+
+    SuccessEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data: { type: object }
+
+    PaginationFields:
+      type: object
+      properties:
+        page: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+        total_pages: { type: integer, minimum: 0 }
+
+    MessageEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [message]
+          properties:
+            message: { type: string }
+
+    DeletedEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [deleted]
+          properties:
+            deleted: { type: boolean }
+
+    # ----------------------- Entidades ----------------------
+    Role:
+      type: string
+      enum: [NEIGHBOR, PRESIDENT]
+
+    IssueStatus:
+      type: string
+      enum: [PENDING, IN_PROGRESS, RESOLVED, REJECTED]
+
+    IssuePriority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, URGENT]
+
+    IssueCategory:
+      type: string
+      enum: [PLUMBING, ELECTRICAL, ELEVATOR, CLEANING, SECURITY, OTHER]
+
+    BookingStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, CANCELLED, REJECTED]
+
+    MeetingStatus:
+      type: string
+      enum: [SCHEDULED, IN_PROGRESS, CLOSED, CANCELLED]
+
+    AttendanceStatus:
+      type: string
+      enum: [PENDING, ATTENDED, ABSENT, EXCUSED]
+
+    VoteStatus:
+      type: string
+      enum: [DRAFT, OPEN, CLOSED]
+
+    VoteOption:
+      type: string
+      enum: [AGREE, DISAGREE, NULL]
+
+    User:
+      type: object
+      description: Usuario sin datos de credenciales (`password_hash` nunca se devuelve).
+      required: [id_user, name, surname, email, role]
+      properties:
+        id_user: { type: integer }
+        name: { type: string }
+        surname: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/Role' }
+        id_community: { type: integer, nullable: true }
+        housing: { type: string, nullable: true }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    Community:
+      type: object
+      required: [id_community, name, address, city, postal_code]
+      properties:
+        id_community: { type: integer }
+        name: { type: string }
+        address: { type: string }
+        city: { type: string }
+        postal_code: { type: string }
+        invite_code:
+          type: string
+          nullable: true
+          description: Solo en detalle y en la rotación (nunca en el listado).
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Member:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          description: Miembro proyectado dentro de su comunidad.
+
+    Issue:
+      type: object
+      required: [id_issue, id_community, id_user, title, description, status]
+      properties:
+        id_issue: { type: integer }
+        id_community: { type: integer }
+        id_user: { type: integer, description: Autor de la incidencia. }
+        title: { type: string, maxLength: 200 }
+        description: { type: string, maxLength: 5000 }
+        category: { $ref: '#/components/schemas/IssueCategory' }
+        priority: { $ref: '#/components/schemas/IssuePriority' }
+        status: { $ref: '#/components/schemas/IssueStatus' }
+        resolved_at: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Booking:
+      type: object
+      required: [id_booking, id_community, id_user, space_name, booking_date, start_time, end_time, status]
+      properties:
+        id_booking: { type: integer }
+        id_community: { type: integer }
+        id_user: { type: integer, description: Autor de la reserva. }
+        space_name: { type: string, maxLength: 100 }
+        booking_date: { type: string, format: date, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        start_time: { type: string, pattern: '^\d{2}:\d{2}:\d{2}$' }
+        end_time: { type: string, pattern: '^\d{2}:\d{2}:\d{2}$' }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        notes: { type: string, nullable: true }
+        reviewed_by: { type: integer, nullable: true }
+        reviewed_at: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Meeting:
+      type: object
+      required: [id_meeting, id_community, date, start_time, end_time, title, state]
+      properties:
+        id_meeting: { type: integer }
+        id_community: { type: integer }
+        date: { type: string, format: date }
+        start_time: { type: string }
+        end_time: { type: string }
+        title: { type: string }
+        agenda: { type: string, nullable: true }
+        minutes:
+          type: string
+          nullable: true
+          description: Acta; solo editable cuando la reunión está `CLOSED`.
+        state: { $ref: '#/components/schemas/MeetingStatus' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Attendance:
+      type: object
+      required: [id_meeting, id_user, attendance_status]
+      properties:
+        id_meeting: { type: integer }
+        id_user: { type: integer }
+        attendance_status: { $ref: '#/components/schemas/AttendanceStatus' }
+        confirmed_at: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+        surname: { type: string, nullable: true }
+        housing: { type: string, nullable: true }
+
+    Vote:
+      type: object
+      required: [id_vote, id_meeting, created_by, title, status]
+      properties:
+        id_vote: { type: integer }
+        id_meeting: { type: integer }
+        created_by: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/VoteStatus' }
+        opens_at: { type: string, nullable: true }
+        closes_at: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    VoteResponse:
+      type: object
+      required: [id_vote, id_user, vote_option]
+      properties:
+        id_vote: { type: integer }
+        id_user: { type: integer }
+        vote_option: { $ref: '#/components/schemas/VoteOption' }
+        created_at: { type: string, format: date-time }
+
+    VoteResultItem:
+      type: object
+      required: [vote_option, total]
+      properties:
+        vote_option: { $ref: '#/components/schemas/VoteOption' }
+        total: { type: integer, minimum: 0 }
+
+    MeetingSummary:
+      type: object
+      description: Reunión abreviada para los KPIs del panel.
+      properties:
+        id_meeting: { type: integer }
+        date: { type: string, format: date }
+        start_time: { type: string }
+        end_time: { type: string }
+        title: { type: string }
+        state: { $ref: '#/components/schemas/MeetingStatus' }
+
+    BookingSummary:
+      type: object
+      description: Reserva abreviada para los KPIs del panel.
+      properties:
+        id_booking: { type: integer }
+        space_name: { type: string }
+        booking_date: { type: string, format: date }
+        start_time: { type: string }
+        end_time: { type: string }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+
+    # ---------------------- Envelopes -----------------------
+    AuthSessionEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [token, user]
+          properties:
+            token: { type: string, description: JWT de 8 horas. }
+            user: { $ref: '#/components/schemas/User' }
+
+    ProfileEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [user, communities]
+          properties:
+            user: { $ref: '#/components/schemas/User' }
+            communities:
+              type: array
+              description: Comunidad del usuario con su vivienda.
+              items:
+                type: object
+                properties:
+                  id_community: { type: integer }
+                  name: { type: string }
+                  address: { type: string }
+                  city: { type: string }
+                  housing: { type: string, nullable: true }
+
+    UserEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [user]
+          properties:
+            user: { $ref: '#/components/schemas/User' }
+
+    UserListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/PaginationFields'
+                - type: object
+                  required: [users]
+                  properties:
+                    users:
+                      type: array
+                      items: { $ref: '#/components/schemas/User' }
+
+    CommunityEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [community]
+          properties:
+            community: { $ref: '#/components/schemas/Community' }
+
+    CommunityListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/PaginationFields'
+                - type: object
+                  required: [communities]
+                  properties:
+                    communities:
+                      type: array
+                      items: { $ref: '#/components/schemas/Community' }
+
+    MemberEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [member]
+          properties:
+            member: { $ref: '#/components/schemas/Member' }
+
+    MemberListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/PaginationFields'
+                - type: object
+                  required: [members]
+                  properties:
+                    members:
+                      type: array
+                      items: { $ref: '#/components/schemas/Member' }
+
+    IssueEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [issue]
+          properties:
+            issue: { $ref: '#/components/schemas/Issue' }
+
+    IssueListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/PaginationFields'
+                - type: object
+                  required: [issues]
+                  properties:
+                    issues:
+                      type: array
+                      items: { $ref: '#/components/schemas/Issue' }
+
+    MeetingEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [meeting]
+          properties:
+            meeting: { $ref: '#/components/schemas/Meeting' }
+
+    MeetingListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/PaginationFields'
+                - type: object
+                  required: [meetings]
+                  properties:
+                    meetings:
+                      type: array
+                      items: { $ref: '#/components/schemas/Meeting' }
+
+    AttendanceEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [attendance]
+          properties:
+            attendance: { $ref: '#/components/schemas/Attendance' }
+
+    AttendeesEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [attendees]
+          properties:
+            attendees:
+              type: array
+              items: { $ref: '#/components/schemas/Attendance' }
+
+    VoteEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [vote]
+          properties:
+            vote: { $ref: '#/components/schemas/Vote' }
+
+    VoteListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/PaginationFields'
+                - type: object
+                  required: [votes]
+                  properties:
+                    votes:
+                      type: array
+                      items: { $ref: '#/components/schemas/Vote' }
+
+    VoteResultsEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [vote, results, total_responses]
+          properties:
+            vote: { $ref: '#/components/schemas/Vote' }
+            results:
+              type: array
+              items: { $ref: '#/components/schemas/VoteResultItem' }
+            total_responses: { type: integer, minimum: 0 }
+
+    VoteResponseEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [response]
+          properties:
+            response: { $ref: '#/components/schemas/VoteResponse' }
+
+    BookingEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [booking]
+          properties:
+            booking: { $ref: '#/components/schemas/Booking' }
+
+    BookingListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/PaginationFields'
+                - type: object
+                  required: [bookings]
+                  properties:
+                    bookings:
+                      type: array
+                      items: { $ref: '#/components/schemas/Booking' }
+
+    AvailabilityEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [availability]
+          properties:
+            availability:
+              type: object
+              required: [space_name, booking_date, occupied]
+              properties:
+                space_name: { type: string }
+                booking_date: { type: string, format: date }
+                occupied:
+                  type: array
+                  description: Reservas que ocupan la fecha; sin `id_user` ni `notes`.
+                  items:
+                    type: object
+                    required: [id_booking, start_time, end_time, status]
+                    properties:
+                      id_booking: { type: integer }
+                      start_time: { type: string }
+                      end_time: { type: string }
+                      status: { $ref: '#/components/schemas/BookingStatus' }
+
+    SummaryEnvelope:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [success] }
+        data:
+          type: object
+          required: [summary]
+          properties:
+            summary:
+              type: object
+              required: [role, generated_at, kpis]
+              properties:
+                role: { $ref: '#/components/schemas/Role' }
+                generated_at: { type: string, example: '2026-11-28 16:30:16' }
+                kpis:
+                  type: object
+                  description: |
+                    `NEIGHBOR`: `open_issues`, `pending_votes`,
+                    `next_meeting`, `next_booking`.
+                    `PRESIDENT`: esas mismas métricas de comunidad más
+                    `pending_bookings`, `issues_by_status`,
+                    `bookings_by_status`, `active_members`,
+                    `upcoming_meetings` y `open_votes`.
+                  properties:
+                    open_issues: { type: integer, minimum: 0 }
+                    pending_votes: { type: integer, minimum: 0 }
+                    pending_bookings: { type: integer, minimum: 0 }
+                    next_meeting:
+                      allOf:
+                        - $ref: '#/components/schemas/BookingSummary'
+                        - nullable: true
+                    next_booking:
+                      allOf:
+                        - $ref: '#/components/schemas/BookingSummary'
+                        - nullable: true
+                    issues_by_status:
+                      type: object
+                      description: Las 4 claves de `IssueStatus`, todas presentes (0 si no hay).
+                      additionalProperties: { type: integer, minimum: 0 }
+                    bookings_by_status:
+                      type: object
+                      description: Las 4 claves de `BookingStatus`, todas presentes (0 si no hay).
+                      additionalProperties: { type: integer, minimum: 0 }
+                    active_members:
+                      type: object
+                      properties:
+                        total: { type: integer, minimum: 0 }
+                        by_role:
+                          type: object
+                          additionalProperties: { type: integer, minimum: 0 }
+                    upcoming_meetings:
+                      type: array
+                      maxItems: 5
+                      items: { $ref: '#/components/schemas/MeetingSummary' }
+                    open_votes:
+                      type: array
+                      maxItems: 5
+                      items: { $ref: '#/components/schemas/Vote' }
+
+    # ------------------- Cuerpos de petición -----------------
+    RegisterRequest:
+      type: object
+      required: [name, surname, email, password]
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 100 }
+        surname: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, description: Mínimo 8 caracteres, con letra y número. }
+        phone: { type: string, nullable: true, maxLength: 20 }
+        invite_code:
+          type: string
+          nullable: true
+          description: Código de la comunidad a la que se vincula en el registro.
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    PasswordChangeRequest:
+      type: object
+      required: [current_password, new_password]
+      additionalProperties: false
+      properties:
+        current_password: { type: string }
+        new_password: { type: string, minLength: 8, description: Distinta de la actual. }
+
+    UserCreateRequest:
+      type: object
+      required: [name, surname, email, password]
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 100 }
+        surname: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        phone: { type: string, nullable: true, maxLength: 20 }
+        role: { $ref: '#/components/schemas/Role' }
+        id_community: { type: integer, nullable: true }
+        housing: { type: string, nullable: true, maxLength: 50 }
+
+    UserUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 100 }
+        surname: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true, maxLength: 20 }
+        role: { $ref: '#/components/schemas/Role' }
+        id_community: { type: integer, nullable: true }
+        housing: { type: string, nullable: true, maxLength: 50 }
+
+    CommunityCreateRequest:
+      type: object
+      required: [name, address, city, postal_code]
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 100 }
+        address: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        postal_code: { type: string, maxLength: 10 }
+        invite_code: { type: string, maxLength: 20, description: Opcional; si no llega se genera uno. }
+
+    CommunityUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 100 }
+        address: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        postal_code: { type: string, maxLength: 10 }
+
+    MemberLinkRequest:
+      type: object
+      required: [id_user]
+      additionalProperties: false
+      properties:
+        id_user: { type: integer, minimum: 1 }
+        housing: { type: string, nullable: true, maxLength: 50 }
+
+    MemberUpdateRequest:
+      type: object
+      required: [housing]
+      additionalProperties: false
+      properties:
+        housing:
+          type: string
+          nullable: true
+          maxLength: 50
+          description: '`null` o cadena vacía vacían la vivienda.'
+
+    IssueCreateRequest:
+      type: object
+      required: [title, description]
+      additionalProperties: false
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string, maxLength: 5000 }
+        category: { $ref: '#/components/schemas/IssueCategory' }
+        priority: { $ref: '#/components/schemas/IssuePriority' }
+
+    IssueUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string, maxLength: 5000 }
+        category:
+          allOf: [{ $ref: '#/components/schemas/IssueCategory' }]
+          nullable: true
+        priority: { $ref: '#/components/schemas/IssuePriority' }
+
+    IssueStatusRequest:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { $ref: '#/components/schemas/IssueStatus' }
+
+    MeetingCreateRequest:
+      type: object
+      required: [date, start_time, end_time, title]
+      additionalProperties: false
+      properties:
+        date: { type: string, format: date }
+        start_time: { type: string, example: '18:00:00' }
+        end_time: { type: string, example: '20:00:00' }
+        title: { type: string, maxLength: 200 }
+        agenda: { type: string, nullable: true }
+
+    MeetingUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        date: { type: string, format: date }
+        start_time: { type: string }
+        end_time: { type: string }
+        title: { type: string, maxLength: 200 }
+        agenda: { type: string, nullable: true }
+        minutes:
+          type: string
+          nullable: true
+          description: Solo admisible con la reunión en `CLOSED`.
+
+    MeetingStatusRequest:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state: { $ref: '#/components/schemas/MeetingStatus' }
+
+    AttendanceRequest:
+      type: object
+      required: [attendance_status]
+      additionalProperties: false
+      properties:
+        attendance_status:
+          type: string
+          enum: [ATTENDED, ABSENT, EXCUSED]
+
+    VoteCreateRequest:
+      type: object
+      required: [title, opens_at, closes_at]
+      additionalProperties: false
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string, nullable: true }
+        opens_at: { type: string, description: '`YYYY-MM-DD HH:mm:ss` en UTC.' }
+        closes_at: { type: string, description: '`opens_at < closes_at`.' }
+
+    VoteUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string, nullable: true }
+        opens_at: { type: string }
+        closes_at: { type: string }
+
+    VoteStatusRequest:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { $ref: '#/components/schemas/VoteStatus' }
+
+    VoteResponseRequest:
+      type: object
+      required: [vote_option]
+      additionalProperties: false
+      properties:
+        vote_option: { $ref: '#/components/schemas/VoteOption' }
+
+    BookingCreateRequest:
+      type: object
+      required: [space_name, booking_date, start_time, end_time]
+      additionalProperties: false
+      properties:
+        space_name: { type: string, maxLength: 100 }
+        booking_date:
+          type: string
+          format: date
+          description: Sin fechas pasadas y como máximo 30 días de antelación.
+        start_time: { type: string, description: '`HH:mm` o `HH:mm:ss`.' }
+        end_time: { type: string, description: 'Posterior al inicio; duración entre 30 y 240 minutos.' }
+        notes: { type: string, nullable: true }
+
+    BookingUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        space_name: { type: string, maxLength: 100 }
+        booking_date: { type: string, format: date }
+        start_time: { type: string }
+        end_time: { type: string }
+        notes: { type: string, nullable: true }
+
+    BookingStatusRequest:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [CONFIRMED, CANCELLED, REJECTED]
+          description: '`PENDING` no se impone desde el cuerpo.'
