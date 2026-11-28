@@ -9,9 +9,13 @@
 // Cobertura exigida:
 //   · dos creaciones **simultáneas** de la misma franja → solo una
 //     es efectiva; la otra responde `409 CONFLICT` y en la base de
-//     datos queda UNA sola fila.
+//     datos queda UNA sola fila;
 //   · control: dos creaciones simultáneas en franjas distintas →
-//     ambas se crean (el bloqueo no serializa de más).
+//     ambas se crean (el bloqueo no serializa de más);
+//   · dos **ediciones** simultáneas de reservas distintas hacia la
+//     misma franja → solo una se aplica: el chequeo y el `UPDATE`
+//     corren en la misma transacción y bajo el candado de la
+//     comunidad.
 //
 // La simultaneidad se consigue lanzando las dos peticiones con
 // `Promise.all` sobre `supertest`: ambas entran en el servidor antes
@@ -184,5 +188,55 @@ describe("POST /communities/:communityId/bookings — concurrencia", () => {
     expect(evening.status).toBe(201);
     expect(await countSlot("09:00:00", "11:00:00")).toBe(1);
     expect(await countSlot("19:00:00", "21:00:00")).toBe(1);
+  });
+
+  it("dos ediciones simultáneas hacia la misma franja: solo una se aplica", async () => {
+    const url = `${BASE}/communities/${communityId}/bookings`;
+
+    // Dos reservas propias en frangas distintas de la misma fecha.
+    const first = await request(app)
+      .post(url)
+      .set(auth(neighborToken))
+      .send(bookingBody("07:00", "08:30"));
+    const second = await request(app)
+      .post(url)
+      .set(auth(neighborToken))
+      .send(bookingBody("22:00", "23:30"));
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+
+    const firstId = first.body.data.booking.id_booking;
+    const secondId = second.body.data.booking.id_booking;
+
+    // Las dos ediciones van en paralelo hacia la MISMA franja: sin el
+    // candado de comunidad leerían antes de escribir y las dos se
+    // aplicarían; con él, la segunda relee y recibe 409.
+    const [editedA, editedB] = await Promise.all([
+      request(app)
+        .patch(`${BASE}/bookings/${firstId}`)
+        .set(auth(neighborToken))
+        .send({ start_time: "13:00", end_time: "15:00" }),
+      request(app)
+        .patch(`${BASE}/bookings/${secondId}`)
+        .set(auth(neighborToken))
+        .send({ start_time: "13:00", end_time: "15:00" }),
+    ]);
+
+    expect([editedA.status, editedB.status].sort()).toEqual([200, 409]);
+
+    const accepted = editedA.status === 200 ? editedA : editedB;
+    const rejected = editedA.status === 409 ? editedA : editedB;
+
+    expect(accepted.body.data.booking.start_time).toBe("13:00:00");
+    expect(accepted.body.data.booking.end_time).toBe("15:00:00");
+    expect(rejected.body.error.code).toBe("CONFLICT");
+
+    // En esa franja queda UNA sola reserva; la otra sigue en la suya.
+    expect(await countSlot("13:00:00", "15:00:00")).toBe(1);
+    expect(
+      (await countSlot("07:00:00", "08:30:00")) +
+        (await countSlot("22:00:00", "23:30:00")),
+    ).toBe(1);
   });
 });

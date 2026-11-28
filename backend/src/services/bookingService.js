@@ -20,9 +20,11 @@
 //   · El alta comprueba el solapamiento dentro de la transacción
 //     con `SELECT ... FOR UPDATE` (`BookingRepository.
 //     createWithOverlapCheck`): dos peticiones simultáneas no
-//     pueden crear la misma franja. La edición reutiliza la misma
-//     regla sobre la lectura de disponibilidad, excluyéndose a sí
-//     misma.
+//     pueden crear la misma franja. La edición corre su chequeo y
+//     su `UPDATE` dentro de la transacción equivalente
+//     (`updateWithOverlapCheck`), excluyéndose a sí misma; ambas
+//     pasan por el candado de la comunidad, que serializa la
+//     escritura y evita el `ER_LOCK_DEADLOCK` del gap lock.
 //   · El vecino solo cancela sus propias reservas `PENDING`; el
 //     presidente confirma, rechaza y cancela las de su comunidad.
 //     `DELETE` no borra filas: cancela (las reservas son
@@ -41,7 +43,7 @@ import {
   BOOKING_MIN_DURATION_MINUTES,
   BOOKING_UPDATABLE_FIELDS,
 } from "../models/Booking.js";
-import { formatTime, normalizeDate, normalizeTime } from "../utils/datetime.js";
+import { formatDate, formatTime, normalizeDate, normalizeTime } from "../utils/datetime.js";
 import { buildPagination, parseListParams } from "../utils/pagination.js";
 import {
   BookingRepository,
@@ -99,23 +101,6 @@ function toMinutes(value) {
   if (!match) return null;
 
   return Number(match[1]) * 60 + Number(match[2]);
-}
-
-/**
- * -----------------------------------------------------------------
- * Función: overlaps
- * Propósito: comprobar solapamiento entre dos pares de minutos
- * `[inicio, fin)` (medio abierto: una reserva que termina cuando
- * otra empieza no se solapa).
- * @param {number} startA - Inicio de la franja A.
- * @param {number} endA - Fin de la franja A.
- * @param {number} startB - Inicio de la franja B.
- * @param {number} endB - Fin de la franja B.
- * @returns {boolean} `true` si las franjas se cruzan.
- * -----------------------------------------------------------------
- */
-function overlaps(startA, endA, startB, endB) {
-  return startA < endB && endA > startB;
 }
 
 /**
@@ -385,47 +370,24 @@ export class BookingService {
 
   /**
    * -----------------------------------------------------------------
-   * Método: #assertNoOverlap
-   * Propósito: comprobar que la franja final no se cruza con otra
-   * reserva `PENDING`/`CONFIRMED` del mismo espacio y fecha. Es la
-   * vía de la edición, que excluye su propia reserva; el alta usa la
-   * comprobación transaccional con bloqueo del repositorio.
-   * @param {object} input - Franja definitiva.
-   * @param {number} input.communityId - Comunidad.
-   * @param {string} input.spaceName - Espacio.
-   * @param {string} input.bookingDate - Fecha (`YYYY-MM-DD`).
-   * @param {string} input.startTime - Inicio (`HH:mm:ss`).
-   * @param {string} input.endTime - Fin (`HH:mm:ss`).
-   * @param {null | number} [excludeBookingId] - Reserva excluida.
-   * @returns {Promise<void>}
-   * @throws {AppError} 409 si la franja ya está ocupada.
+   * Método: #conflictError
+   * Propósito: construir el 409 estándar cuando la transacción de
+   * alta o de edición detecta que la franja ya está ocupada. El
+   * primer conflicto aporta el rango ocupado para que el mensaje sea
+   * accionable; `errorHandler` solo emite `details` en
+   * `VALIDATION_ERROR`, así que esa información viaja en el mensaje.
+   * @param {object[]} conflicts - Filas devueltas por el repositorio.
+   * @returns {AppError} Error 409 `CONFLICT`.
    * -----------------------------------------------------------------
    */
-  async #assertNoOverlap(
-    { communityId, spaceName, bookingDate, startTime, endTime },
-    excludeBookingId = null,
-  ) {
-    const rows = await this.#bookingRepository.findAvailability({
-      communityId,
-      spaceName,
-      bookingDate,
-      excludeBookingId,
-    });
+  #conflictError(conflicts) {
+    const [first] = conflicts;
 
-    const start = toMinutes(startTime);
-    const end = toMinutes(endTime);
-
-    const conflict = rows.find((row) => {
-      const otherStart = toMinutes(row.start_time);
-      const otherEnd = toMinutes(row.end_time);
-      return otherStart !== null && otherEnd !== null && overlaps(start, end, otherStart, otherEnd);
-    });
-
-    if (conflict) {
-      throw AppError.conflict(
-        `La franja solicitada ya está ocupada por otra reserva (de ${formatTime(conflict.start_time)} a ${formatTime(conflict.end_time)}).`,
-      );
-    }
+    return AppError.conflict(
+      first
+        ? `La franja solicitada ya está ocupada por otra reserva (de ${formatTime(first.start_time)} a ${formatTime(first.end_time)}).`
+        : "La franja solicitada ya está ocupada por otra reserva.",
+    );
   }
 
   /**
@@ -555,12 +517,7 @@ export class BookingService {
     });
 
     if (idBooking === null) {
-      const [first] = conflicts;
-      throw AppError.conflict(
-        first
-          ? `La franja solicitada ya está ocupada por otra reserva (de ${formatTime(first.start_time)} a ${formatTime(first.end_time)}).`
-          : "La franja solicitada ya está ocupada por otra reserva.",
-      );
+      throw this.#conflictError(conflicts);
     }
 
     const row = await this.#bookingRepository.findById(idBooking);
@@ -597,7 +554,8 @@ export class BookingService {
    *   · El cuerpo puede traer solo una de las dos horas: el par
    *     definitivo se valida contra la fila guardada.
    *   · La franja resultante vuelve a comprobar el solapamiento
-   *     excluyendo la propia reserva.
+   *     excluyendo la propia reserva, dentro de la misma transacción
+   *     que escribe y con el candado de la comunidad.
    * @param {unknown} bookingId - `req.params.bookingId`.
    * @param {object} data - `req.body`.
    * @param {number} userId - Usuario autenticado.
@@ -623,27 +581,28 @@ export class BookingService {
       throw AppError.forbidden("Solo se puede editar una reserva mientras está pendiente.");
     }
 
-    // Valores definitivos: cuerpo + fila guardada.
+    // Valores definitivos: cuerpo + fila guardada. Ojo con la fecha:
+    // `mysql2` entrega la columna `DATE` como objeto `Date` y
+    // `normalizeDate` solo admite cadenas, así que la fila se pasa
+    // por `formatDate`. Usar `normalizeDate` aquí deja `booking_date`
+    // en `NULL` y el `WHERE booking_date = ?` del chequeo de
+    // solapamiento no encuentra nunca ninguna reserva.
     const spaceName =
       data.space_name !== undefined ? data.space_name.trim() : String(row.space_name);
     const bookingDate =
       data.booking_date !== undefined
         ? normalizeDate(data.booking_date)
-        : normalizeDate(row.booking_date);
+        : formatDate(row.booking_date);
+
+    if (bookingDate === null) {
+      throw AppError.validation("La fecha de reserva no es válida.", {
+        field: "booking_date",
+      });
+    }
+
     const { startTime, endTime } = this.#assertTimeRange(
       data.start_time !== undefined ? data.start_time : row.start_time,
       data.end_time !== undefined ? data.end_time : row.end_time,
-    );
-
-    await this.#assertNoOverlap(
-      {
-        communityId: Number(row.id_community),
-        spaceName,
-        bookingDate,
-        startTime,
-        endTime,
-      },
-      id,
     );
 
     // Solo se escriben los campos que trae el cuerpo (lista blanca).
@@ -657,7 +616,29 @@ export class BookingService {
       else if (key === "notes") fields.notes = normalizeNotes(data.notes);
     }
 
-    await this.#bookingRepository.updateBooking(id, fields);
+    // La comprobación de solapamiento y el `UPDATE` corren dentro de
+    // la MISMA transacción y bajo el candado de la comunidad: dos
+    // ediciones simultáneas de reservas distintas hacia la misma
+    // franja no pueden colarse entre la lectura y la escritura (la
+    // segunda espera, relee y recibe 409).
+    const { updated: affectedRows, conflicts } =
+      await this.#bookingRepository.updateWithOverlapCheck({
+        bookingId: id,
+        communityId: Number(row.id_community),
+        spaceName,
+        bookingDate,
+        startTime,
+        endTime,
+        fields,
+      });
+
+    if (conflicts.length > 0) {
+      throw this.#conflictError(conflicts);
+    }
+
+    if (affectedRows === 0) {
+      throw AppError.notFound("La reserva solicitada no existe.");
+    }
 
     const updated = await this.#bookingRepository.findById(id);
     return { booking: BookingModel.toSafeBooking(updated) };

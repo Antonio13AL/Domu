@@ -401,20 +401,9 @@ export class BookingRepository {
     try {
       await connection.beginTransaction();
 
-      // Serializa las altas de una misma comunidad sobre una fila
-      // concreta. Sin este candado, dos peticiones simultáneas que
-      // llegan con la franja libre toman ambas el gap lock del
-      // índice (los gap locks son compatibles entre sí) y, al
-      // insertar, cada una espera el lock de la otra: InnoDB mata a
-      // una con `ER_LOCK_DEADLOCK` y la API devolvería 500 en lugar
-      // del 409 que corresponde. Con el candado sobre la comunidad,
-      // la segunda transacción espera a que la primera confirme,
-      // relee la franja, encuentra la reserva recién creada y
-      // responde 409 sin interbloqueo.
-      await connection.query(
-        "SELECT id_community FROM communities WHERE id_community = ? FOR UPDATE;",
-        [fields.idCommunity],
-      );
+      // Serializa las altas de una misma comunidad: ver
+      // `#lockCommunity` para el motivo (gap lock → interbloqueo).
+      await this.#lockCommunity(connection, fields.idCommunity);
 
       // `findOverlapsForUpdate` nombra la comunidad `communityId`,
       // mientras que `createBooking` trabaja con `idCommunity`: aquí
@@ -449,19 +438,133 @@ export class BookingRepository {
   /**
    * -----------------------------------------------------------------
    * Método: updateBooking
-   * Propósito: actualizar los campos editables de una reserva
-   * (la lista blanca vive aquí; el servicio valida el estado).
+   * Propósito: actualizar los campos editables de una reserva en una
+   * sola sentencia (la lista blanca vive en `buildUpdateSet`; el
+   * servicio valida el estado). Cuando además hay que aplicar la
+   * regla de solapamiento se usa `updateWithOverlapCheck`, que corre
+   * este mismo `SET` dentro de su transacción.
    * @param {number} bookingId - `bookings.id_booking`.
    * @param {object} fields - Campos normalizados.
    * @returns {Promise<number>} Filas afectadas.
    * -----------------------------------------------------------------
    */
   async updateBooking(bookingId, fields) {
+    return this.#applyUpdate(pool, bookingId, fields);
+  }
+
+  /**
+   * -----------------------------------------------------------------
+   * Método: updateWithOverlapCheck
+   * Propósito: editar una reserva comprobando el solapamiento dentro
+   * de la misma transacción que la escritura. Es la vía que usa el
+   * servicio para `PATCH /bookings/:bookingId`: primero candada la
+   * comunidad, después bloquea las franjas que se crucen con la nueva
+   * (excluyendo la propia reserva) y solo entonces escribe. Si hay
+   * alguna, hace `rollback` y devuelve los conflictos para que el
+   * servicio responda 409.
+   *
+   * Sin el candado de comunidad, dos **ediciones** simultáneas de
+   * reservas distintas hacia la misma franja leerían ambas antes de
+   * escribir, no se verían y las dos se aplicarían.
+   * @param {object} input - Edición completa.
+   * @param {number} input.bookingId - Reserva que se edita.
+   * @param {number} input.communityId - `bookings.id_community`.
+   * @param {string} input.spaceName - Espacio definitivo.
+   * @param {string} input.bookingDate - Fecha definitiva (`YYYY-MM-DD`).
+   * @param {string} input.startTime - Inicio definitivo (`HH:mm:ss`).
+   * @param {string} input.endTime - Fin definitivo (`HH:mm:ss`).
+   * @param {object} input.fields - Columnas a escribir (lista blanca).
+   * @returns {Promise<{ updated: number, conflicts: object[] }>}
+   *   Filas afectadas y conflictos detectados (vacío si se escribió).
+   * -----------------------------------------------------------------
+   */
+  async updateWithOverlapCheck({
+    bookingId,
+    communityId,
+    spaceName,
+    bookingDate,
+    startTime,
+    endTime,
+    fields,
+  }) {
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      await this.#lockCommunity(connection, communityId);
+
+      const conflicts = await this.findOverlapsForUpdate(connection, {
+        communityId,
+        spaceName,
+        bookingDate,
+        startTime,
+        endTime,
+        excludeBookingId: bookingId,
+      });
+
+      if (conflicts.length > 0) {
+        await connection.rollback();
+        return { updated: 0, conflicts };
+      }
+
+      const updated = await this.#applyUpdate(connection, bookingId, fields);
+      await connection.commit();
+
+      return { updated, conflicts: [] };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  /**
+   * -----------------------------------------------------------------
+   * Método: #lockCommunity
+   * Propósito: serializar las escrituras que luego comprueban el
+   * solapamiento de una comunidad sobre su fila.
+   *
+   * Sin este candado, dos transacciones simultáneas que llegan con la
+   * franja libre toman ambas el *gap lock* del índice (los *gap locks*
+   * son compatibles entre sí) y, al insertar o al actualizar, cada una
+   * espera el lock de la otra: InnoDB mata a una con
+   * `ER_LOCK_DEADLOCK` y la API devolvería 500 en lugar del 409. Con
+   * el candado, la segunda transacción espera a que la primera
+   * confirme, relee la franja, encuentra el cambio recién hecho y
+   * responde 409 sin interbloqueo.
+   * @param {import("mysql2/promise").PoolConnection} connection -
+   * Conexión con transacción iniciada.
+   * @param {number} communityId - `communities.id_community`.
+   * @returns {Promise<void>}
+   * -----------------------------------------------------------------
+   */
+  async #lockCommunity(connection, communityId) {
+    await connection.query(
+      "SELECT id_community FROM communities WHERE id_community = ? FOR UPDATE;",
+      [communityId],
+    );
+  }
+
+  /**
+   * -----------------------------------------------------------------
+   * Método: #applyUpdate
+   * Propósito: ejecutar el `UPDATE` de una reserva sobre el executor
+   * indicado (la conexión de una transacción o el pool compartido),
+   * con la lista blanca de columnas de `buildUpdateSet`.
+   * @param {{ query: Function }} executor - Conexión o pool.
+   * @param {number} bookingId - `bookings.id_booking`.
+   * @param {object} fields - Campos normalizados.
+   * @returns {Promise<number>} Filas afectadas.
+   * -----------------------------------------------------------------
+   */
+  async #applyUpdate(executor, bookingId, fields) {
     const { clause, values, keys } = buildUpdateSet(fields);
     if (keys.length === 0) return 0;
 
     const query = `UPDATE bookings SET ${clause} WHERE id_booking = ? LIMIT 1;`;
-    const [result] = await pool.query(query, [...values, bookingId]);
+    const [result] = await executor.query(query, [...values, bookingId]);
     return result.affectedRows;
   }
 
