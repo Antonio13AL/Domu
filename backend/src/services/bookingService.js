@@ -2,7 +2,7 @@
 // Servicio de reservas de espacios comunes
 // =============================================================
 //
-// Reglas de negocio (§Bookings de `backend-rules.md`):
+// Reglas de negocio:
 //   · Cualquier miembro activo de la comunidad consulta la lista y
 //     la disponibilidad, y crea reservas. La pertenencia vive en
 //     `users.id_community` y se comprueba con `MembershipService`,

@@ -3,9 +3,11 @@
 // =============================================================
 //
 // Es el único punto de montaje de la API: cada dominio se añade
-// aquí como sub-router cuando se implemente. Las incidencias ya
-// están montadas en la raíz, porque su dominio ocupa dos familias
-// de caminos (`/communities/:id/issues` y `/issues/:id`).
+// aquí como sub-router cuando se implemente. Los dominios cuyos
+// routers declaran rutas absolutas (reservas, incidencias,
+// reuniones y votaciones) se montan en la raíz; los que declaran
+// rutas relativas (`/auth`, `/users` y `/communities`) consumen su
+// propio prefijo.
 //
 // Las rutas que no existen caen en el middleware `notFound` y
 // responden `404 NOT_FOUND` con el formato estándar.
@@ -16,6 +18,7 @@ import { Router } from "express";
 import authRoutes from "./authRoutes.js";
 import userRoutes from "./userRoutes.js";
 import communityRoutes from "./communityRoutes.js";
+import bookingRoutes from "./bookingRoutes.js";
 import issueRoutes from "./issueRoutes.js";
 import meetingRoutes from "./meetingRoutes.js";
 import voteRoutes from "./voteRoutes.js";
@@ -23,9 +26,9 @@ import voteRoutes from "./voteRoutes.js";
 const router = Router();
 
 // ---------------------------------------------------------------
-// 1. Familias con prefijo fijo (`/auth`, `/users`, `/communities`,
-//    `/issues`, `/meetings`, `/votes`): el prefijo se consume aquí
-//    y cada router resuelve sus rutas relativas (`/:issueId`, …).
+// 1. Familias con prefijo fijo (`/auth`, `/users`, `/communities`):
+//    el prefijo se consume aquí y cada router resuelve sus rutas
+//    relativas (`/me`, `/:userId`, `/:communityId`, …).
 // ---------------------------------------------------------------
 
 // Autenticación: registro, login, perfil y contraseña.
@@ -36,6 +39,12 @@ router.use("/users", userRoutes);
 
 // Comunidades, miembros e invitaciones.
 router.use("/communities", communityRoutes);
+
+// Reservas: rutas absolutas (`/communities/:id/bookings`,
+// `/communities/:id/bookings/availability` y `/bookings/:id`), por lo
+// que se monta en la raíz, antes que el resto de familias absolutas
+// para que su orden de declaración sea el primero de la sección 2.
+router.use("/", bookingRoutes);
 
 // Incidencias: rutas absolutas (`/communities/:id/issues` e
 // `/issues/:id`), montadas en la raíz del prefijo.
