@@ -1,4 +1,4 @@
-// =============================================================
+  // =============================================================
 // Repositorio de reservas de espacios comunes — SQL parametrizado.
 // =============================================================
 //
@@ -299,12 +299,16 @@ export class BookingRepository {
       );
     }
 
+    // Solapamiento de franjas semiabiertas [inicio, fin): la
+    // reservada existente empieza ANTES de que termine la nueva y
+    // termina DESPUÉS de que la nueva empiece. El primer `?` de esa
+    // pareja es, por tanto, `endTime` y el segundo `startTime`.
     const values = [
       communityId,
       spaceName,
       bookingDate,
-      startTime,
       endTime,
+      startTime,
       ...BOOKING_BLOCKING_STATUS_VALUES,
     ];
     let exclusion = "";
@@ -320,8 +324,8 @@ export class BookingRepository {
       WHERE id_community = ?
         AND space_name = ?
         AND booking_date = ?
-        AND start_time < ?
-        AND end_time > ?
+        AND start_time < ?   -- empieza antes de que acabe la nueva
+        AND end_time > ?     -- acaba después de que empiece la nueva
         AND status IN (?, ?)
         ${exclusion}
       ORDER BY start_time ASC, id_booking ASC
@@ -397,7 +401,18 @@ export class BookingRepository {
     try {
       await connection.beginTransaction();
 
-      const conflicts = await this.findOverlapsForUpdate(connection, fields);
+      // `findOverlapsForUpdate` nombra la comunidad `communityId`,
+      // mientras que `createBooking` trabaja con `idCommunity`: aquí
+      // se traduce la forma, porque pasar `fields` tal cual deja la
+      // condición `id_community = NULL` y el solapamiento no se
+      // detecta nunca.
+      const conflicts = await this.findOverlapsForUpdate(connection, {
+        communityId: fields.idCommunity,
+        spaceName: fields.spaceName,
+        bookingDate: fields.bookingDate,
+        startTime: fields.startTime,
+        endTime: fields.endTime,
+      });
 
       if (conflicts.length > 0) {
         await connection.rollback();
