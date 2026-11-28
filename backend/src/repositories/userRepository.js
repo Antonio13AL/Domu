@@ -270,9 +270,7 @@ export class UserRepository {
    * Método: isCommunityMember
    * Propósito: comprobar que el usuario es miembro activo de la
    * comunidad (`users.id_community` + `is_active`). Es la comprobación
-   * de pertenencia que usan las rutas de incidencias; la
-   * tabla `community_members` descrita en el §6.3 no existe en el
-   * esquema actual.
+   * de pertenencia que usan las rutas de incidencias.
    * @param {number} userId - `users.id_user`.
    * @param {number} communityId - `communities.id_community`.
    * @returns {Promise<boolean>} `true` si es miembro activo.

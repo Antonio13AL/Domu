@@ -401,6 +401,21 @@ export class BookingRepository {
     try {
       await connection.beginTransaction();
 
+      // Serializa las altas de una misma comunidad sobre una fila
+      // concreta. Sin este candado, dos peticiones simultáneas que
+      // llegan con la franja libre toman ambas el gap lock del
+      // índice (los gap locks son compatibles entre sí) y, al
+      // insertar, cada una espera el lock de la otra: InnoDB mata a
+      // una con `ER_LOCK_DEADLOCK` y la API devolvería 500 en lugar
+      // del 409 que corresponde. Con el candado sobre la comunidad,
+      // la segunda transacción espera a que la primera confirme,
+      // relee la franja, encuentra la reserva recién creada y
+      // responde 409 sin interbloqueo.
+      await connection.query(
+        "SELECT id_community FROM communities WHERE id_community = ? FOR UPDATE;",
+        [fields.idCommunity],
+      );
+
       // `findOverlapsForUpdate` nombra la comunidad `communityId`,
       // mientras que `createBooking` trabaja con `idCommunity`: aquí
       // se traduce la forma, porque pasar `fields` tal cual deja la

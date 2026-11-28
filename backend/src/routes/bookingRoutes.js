@@ -22,7 +22,7 @@
 // propiedad de la reserva. En la capa de ruta solo se
 // autentica con `authenticateToken` y se exige el rol `PRESIDENT`
 // en el cambio de estado, que es el único punto que la tabla del
-// §Bookings reserva a «Admin»: el vecino cancela sus propias
+// Bookings reserva a «Admin»: el vecino cancela sus propias
 // reservas con `DELETE /bookings/:bookingId`. La pertenencia a la
 // comunidad, el ownership y el resto de reglas (franja, duración,
 // solapamiento, transiciones) viven en el servicio, nunca aquí.

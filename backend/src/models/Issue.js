@@ -72,7 +72,7 @@ export const ISSUE_WRITABLE_FIELDS = Object.freeze([
 /**
  * -----------------------------------------------------------------
  * Constante: ISSUE_TRANSITIONS
- * Propósito: máquina de transiciones de estado (§7.4).
+ * Propósito: máquina de transiciones de estado.
  *   PENDING     → IN_PROGRESS | REJECTED
  *   IN_PROGRESS → RESOLVED | REJECTED
  *   RESOLVED y REJECTED son estados finales.
